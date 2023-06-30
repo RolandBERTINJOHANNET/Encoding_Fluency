@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import VGG_vae_modules
 import warnings
-import CBAM
 
 #pixelshuffle module :
 class PixelShuffler(nn.Module):
@@ -19,30 +18,28 @@ class PixelShuffler(nn.Module):
 class Model(nn.Module):
   #this init function is hard to read, but basically it constructs the VAE with a sparsity constraint on the 
   #layer_sparsity_cstraint-th layers (it being a list)
-  def __init__(self,device,att_locs,sparsity_coeff=1.,sparsity_param=0.001,temperature=10.):
+  def __init__(self,device,layer_sparsity_cstraint=[],attention=[],sparsity_coeff=1.,sparsity_param=0.001):
     super().__init__()
     self.latent_dim = 512
     
+    #some of the constraint indices need to be passed to the vgg_features module, some to the ones after
+    vgg_cstraints = [index for index in layer_sparsity_cstraint if index<16]#thre's 16 convs in vgg19
+    other_cstraints = [index-15 for index in layer_sparsity_cstraint if index>16]#after vgg, first index is 1
+    
     #---------------------encoder
     modules = []
+    module_names = ["feature_extractor","mean_std","reparametrization"]
     in_channels = self.latent_dim
-    
-    nb_filters = [64,64, 128,128, 256,256, 512, 512,512, 512]#this is stupidly just used for its length..
-    in_chan=3
-    for i in range(len(nb_filters)):
-        if i%2==0:
-            out_chan=nb_filters[i]
-            modules.append(nn.Sequential(VGG_vae_modules.ConvBlock(in_chan,out_chan,stride=True)))
-            in_chan=out_chan
-        else:
-            modules.append(nn.Sequential(VGG_vae_modules.ConvBlock(in_chan,out_chan,stride=False)))
-            in_chan=out_chan
-        if i in att_locs:
-            modules.append(CBAM.Constrained_CBAM(in_chan, temperature=temperature, reduction_ratio=16, pool_types=['avg', 'max']))
-    
+
+    modules.append(VGG_vae_modules.VGG19_Features(vgg_cstraints,attention, sparsity_param, sparsity_coeff))
     modules.append(VGG_vae_modules.MeanStdFeatureMaps(in_channels,self.latent_dim))
     modules.append(VGG_vae_modules.Reparametrization(device))
     self.encoder = nn.Sequential(*modules)
+    
+    #now add the constraints
+    for layer_idx in other_cstraints:
+        print("layer idx : ",layer_idx)
+        self.encoder[layer_idx].add_constraint(sparsity_param,sparsity_coeff)
 
     #-------------decoder
     #we want a 2-fold upscale factor and a 2-fold depth-decrease factor,
@@ -50,7 +47,7 @@ class Model(nn.Module):
     upscale_factor = 2
     in_channels=self.latent_dim
     modules = []
-    nb_filters = [self.latent_dim,512, 256, 128, 64]#this is stupidly just used for its length..
+    nb_filters = [self.latent_dim,512, 256, 128, 64]#this is stupidly just used for its length
     out_chan=None#the first iteration sets its value
     for i in range(len(nb_filters)*2):
         if i%2==0:#only downsample once out of two layers
@@ -85,11 +82,9 @@ class Model(nn.Module):
     for layer in self.encoder:
         x,kl_temp=layer(x)
         kl+=kl_temp
+        #print("layer ",type(layer).__name__,": kl = ",float(kl),"\nminmax of x : ",float(x.min()),",",float(x.max()),"\n")
     for module in self.decoder:
-        if isinstance(module,VGG_vae_modules.ConvBlock):
-            x,_ = module(x)
-        else:
-            x=module(x)
+        x = module(x)
     return x,kl
     
 #----------------------------------------------------------------------------misc
