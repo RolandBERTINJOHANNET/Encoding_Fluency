@@ -2,18 +2,22 @@
 #note that the code is far from optimized. It is ridiculusly inefficient, and could be improved at the cost of clarity,
 #but the objective was to maintain readability and simplicity as metrics extraction is usually done on
 #a couple hundred images and thus is not very expensive.
+import torch
+import SAM_opt
+from torchvision.io import read_image
 
-def get_metrics_image(image_path):
+def get_metrics_image(image_path,model,loss_function):
     """Extract and return all the metrics from the processing of an image at a certain path"""
     #this way of organizing code makes us re-load the models for every image, but it makes simpler code
     #and we won't be extracting metrics on thousands upon thousands of images (which would be pretty long)
 
     metrics = {}
 
-    #read and preprocess image
+    #read and normalize image
+    image = read_image(image_path).float() / 255.
 
     #get gini, l1, kurtosis
-    #metrics["gini_L1"]=gini ......
+    metrics_dico_list = [get_gini(image, model),get_L1(image, model),get_kurtosis(image, model),get_SAM_delta(image, model, loss_function), get_attention(image, model), get_reco_error(image, model, loss_function, loss_function.name)]
 
     #get the 2 lpips reconstruction errors
     #get the L2 and SSIM errors
@@ -88,7 +92,7 @@ def get_reco_error(image,model,loss_fun,loss_fun_name):
     #predict
     with torch.no_grad():
         prediction,_ = model(image)
-        loss = loss_fun(prediction,batch[idx:idx+batch_size])#compute loss
+        loss = loss_fun(prediction,image)#compute loss
     return {"loss_fun_name":loss.detach().cpu()}
 
 def get_SAM_delta(image,model,loss_fun):
@@ -98,11 +102,11 @@ def get_SAM_delta(image,model,loss_fun):
     opt = SAM_opt.SAM(model.parameters(), torch.optim.Adam)
     #predict
     prediction,_ = model(image)
-    loss = loss_fun(prediction,batch[idx:idx+batch_size])
+    loss = loss_fun(prediction,image)
     loss.backward()
     opt.first_step(zero_grad=True)#step towards local maximum
-    prediction,_ = model(batch[idx:idx+batch_size])#predict from local max
-    loss_max = loss_fun(prediction,batch[idx:idx+batch_size]).mean()#compute loss from local max
+    prediction_max,_ = model(image)#predict from local max
+    loss_max = loss_fun(prediction,image)#compute loss from local max
 
     #revert to former version
     model = model_copy

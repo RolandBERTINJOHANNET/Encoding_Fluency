@@ -28,7 +28,6 @@ class Model(nn.Module):
     
     #---------------------encoder
     modules = []
-    module_names = ["feature_extractor","mean_std","reparametrization"]
     in_channels = self.latent_dim
 
     modules.append(VGG_vae_modules.VGG19_Features(vgg_cstraints,attention, sparsity_param, sparsity_coeff))
@@ -88,26 +87,24 @@ class Model(nn.Module):
     return x,kl
     
 #----------------------------------------------------------------------------misc
-  def get_activations(self,x,layer_num,mean_or_std=None,activation=False):
-      layers_done = 0
+  def get_activations(self,x,layer_name):
       #feature extractor has 16 layers so it is treated separately
-      if layer_num<16:#get activations from the right layer in feature extractor
-          x,name = self.encoder[0].get_activations(x,layer_num,activation,mean_or_std)
-          return x,name
-      else:#don't get activations, just feedforward
-          layers_done+=1
-          x = self.encoder[0](x)[0].detach()
-      layer_num-=15#we just went through the 16 vgg convs
-      #go through the rest of the decoder
-      for layer in self.encoder[1:]:
-          if layers_done>=layer_num:
-              x = layer.get_activations(x,activation,mean_or_std).detach()
-              return x,str(type(layer).__name__)+"_"+(mean_or_std if layer_num==1 else "")
-          else:
-              layers_done+=1
-              x = layer(x)[0].detach()
+      activations_convs = self.modules[0].get_activations()
+      if activations_convs is not None:
+        return activations_convs
+      else:#if the layer isn't one of the convs, just feedforward
+        x = self.encoder[0](x)[0]
+      #try meanstdfeaturemaps
+      if "MeanStdFeatureMaps" in layer_name:
+          return self.encoder.modules[1].get_activations(x,"mu" if "mu" in layer_name else "sigma")
+      else:
+          x = self.encoder.modules[1](x)
+      #try reparametrization
+      if "Reparametrization" in layer_name:
+          return self.encoder.modules[2].get_activations(x)
+          
  
-      warnings.warn("\n!!!!\n!!!!!!\n      index given to model.get_activations ("+str(layer_num)+") is higher than the number of layers !\n")
+      warnings.warn("\n!!!!\n!!!!!!\n      name given to model.get_activations ("+str(layer_name)+") doesn't exist !\n")
       return None
   
   def encode(self,x,sample=False):

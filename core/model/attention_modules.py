@@ -1,6 +1,8 @@
 import torch
+import math
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 #---------------------sparsity constraint without a sigmoid
 class CBAM_SparsityConstraint(nn.Module):
@@ -44,7 +46,7 @@ class Flatten(nn.Module):
         return x.view(x.size(0), -1)
 
 class ChannelGate(nn.Module):
-    def __init__(self, gate_channels, temperature=5, reduction_ratio=16, pool_types=['avg', 'max']):
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
         super(ChannelGate, self).__init__()
         self.gate_channels = gate_channels
         self.mlp = nn.Sequential(
@@ -54,7 +56,6 @@ class ChannelGate(nn.Module):
             nn.Linear(gate_channels // reduction_ratio, gate_channels)
             )
         self.pool_types = pool_types
-        self.temperature = temperature
     def forward(self, x):
         channel_att_sum = None
         for pool_type in self.pool_types:
@@ -76,38 +77,13 @@ class ChannelGate(nn.Module):
                 channel_att_sum = channel_att_raw
             else:
                 channel_att_sum = channel_att_sum + channel_att_raw
-        
-        channel_att_sum=torch.exp(channel_att_sum/self.temperature)
-        channel_att_sum = channel_att_sum/channel_att_sum.sum(dim=1)[:,None]
-        
-        scale = channel_att_sum.unsqueeze(2).unsqueeze(3).expand_as(x)
-        
-        return x * scale,0.#no constraint
 
-    def get_attmap(self,x):
-        channel_att_sum = None
-        for pool_type in self.pool_types:
-            if pool_type=='avg':
-                avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( avg_pool )
-            elif pool_type=='max':
-                max_pool = F.max_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( max_pool )
-            elif pool_type=='lp':
-                lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( lp_pool )
-            elif pool_type=='lse':
-                # LSE pool only
-                lse_pool = logsumexp_2d(x)
-                channel_att_raw = self.mlp( lse_pool )
-
-            if channel_att_sum is None:
-                channel_att_sum = channel_att_raw
-            else:
-                channel_att_sum = channel_att_sum + channel_att_raw
+        l1 = channel_att_sum.abs().mean()#when I apply after the sigmoid it gets stuck and doesn't go down allt he way to 0
         
-        channel_att_sum = channel_att_sum/channel_att_sum.sum(dim=1)[:,None]
-        return channel_att_sum
+        scale = F.sigmoid( channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
+        
+        
+        return x * scale,l1
 
 def logsumexp_2d(tensor):
     tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
@@ -120,17 +96,20 @@ class ChannelPool(nn.Module):
         return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
 
 
+
+#the main module --
 class Constrained_CBAM(nn.Module):
-    def __init__(self, gate_channels, temperature=5., reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
+    def __init__(self, gate_channels, constraint_param, scaling_param, index, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
         super().__init__()
-        self.ChannelGate = ChannelGate(gate_channels, temperature, reduction_ratio, pool_types)
-        self.name="Constrained_CBAM"
+        self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
+        self.name = "attention"+str(index)
         
     def forward(self, x):
         l1=0.
         x_out,l1 = self.ChannelGate(x)
         return x_out,l1
     
-    def get_activations(self,x,activation=True,mean_or_std=None):
-        x_out= self.ChannelGate.get_attmap(x)
-        return x_out
+    def get_activations(self,x):
+        with torch.no_grad():
+            x_out= self.ChannelGate(x)
+            return x_out
