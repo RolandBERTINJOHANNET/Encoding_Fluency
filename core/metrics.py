@@ -2,11 +2,11 @@
 #note that the code is far from optimized. It is ridiculusly inefficient, and could be improved at the cost of clarity,
 #but the objective was to maintain readability and simplicity as metrics extraction is usually done on
 #a couple hundred images and thus is not very expensive.
-import os
-os.chdir("/home/renoult/Bureau/Encoding_Fluency/core")
+import sys
+sys.path.append("../../core/","../../core/model/")
+import data
 import torch
 import SAM_opt
-from torchvision.io import read_image
 import lpips
 from torchmetrics import StructuralSimilarityIndexMeasure as SSIM
 
@@ -18,7 +18,7 @@ def get_metrics_image(image_path,model):
     metrics = {}
 
     #read and normalize image
-    image = read_image(image_path).float() / 255.
+    image = data.CustomDataset.process_image(image_path, torch.device("cpu"))
 
     #accumulate all metrics dictionnaries into metrics_dico_list -- at the end, put them all together into a single dico
     #get gini, l1, kurtosis and the attention featuremaps L1 norms
