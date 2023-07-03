@@ -23,7 +23,7 @@ class Model(nn.Module):
     self.latent_dim = 512
     
     #some of the constraint indices need to be passed to the vgg_features module, some to the ones after
-    vgg_cstraints = [index for index in layer_sparsity_cstraint if index<16]#thre's 16 convs in vgg19
+    vgg_cstraints = [index for index in layer_sparsity_cstraint if index<16]#there's 16 convs in vgg19
     other_cstraints = [index-15 for index in layer_sparsity_cstraint if index>16]#after vgg, first index is 1
     
     #---------------------encoder
@@ -81,7 +81,6 @@ class Model(nn.Module):
     for layer in self.encoder:
         x,kl_temp=layer(x)
         kl+=kl_temp
-        #print("layer ",type(layer).__name__,": kl = ",float(kl),"\nminmax of x : ",float(x.min()),",",float(x.max()),"\n")
     for module in self.decoder:
         x = module(x)
     return x,kl

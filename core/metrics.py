@@ -2,11 +2,15 @@
 #note that the code is far from optimized. It is ridiculusly inefficient, and could be improved at the cost of clarity,
 #but the objective was to maintain readability and simplicity as metrics extraction is usually done on
 #a couple hundred images and thus is not very expensive.
+import os
+os.chdir("/home/renoult/Bureau/Encoding_Fluency/core")
 import torch
 import SAM_opt
 from torchvision.io import read_image
+import lpips
+from torchmetrics import StructuralSimilarityIndexMeasure as SSIM
 
-def get_metrics_image(image_path,model,loss_function):
+def get_metrics_image(image_path,model):
     """Extract and return all the metrics from the processing of an image at a certain path"""
     #this way of organizing code makes us re-load the models for every image, but it makes simpler code
     #and we won't be extracting metrics on thousands upon thousands of images (which would be pretty long)
@@ -16,19 +20,29 @@ def get_metrics_image(image_path,model,loss_function):
     #read and normalize image
     image = read_image(image_path).float() / 255.
 
-    #get gini, l1, kurtosis
-    metrics_dico_list = [get_gini(image, model),get_L1(image, model),get_kurtosis(image, model),get_SAM_delta(image, model, loss_function), get_attention(image, model), get_reco_error(image, model, loss_function, loss_function.name)]
+    #accumulate all metrics dictionnaries into metrics_dico_list -- at the end, put them all together into a single dico
+    #get gini, l1, kurtosis and the attention featuremaps L1 norms
+    metrics_dico_list = [get_gini(image, model),
+                         get_L1(image, model),
+                         get_kurtosis(image, model),
+                         get_attention(image, model)]
 
-    #get the 2 lpips reconstruction errors
-    #get the L2 and SSIM errors
-    #metrics["L2"]=L2 ......
-
-    #get the attention fm L1 norms
-    #metrics["attention"]=attention
-
-    #get the sharpness metric
-    #metrics["sharpness"]=sharpness
-
+    
+    #get the 2 lpips reconstruction errors, the L2 and SSIM errors
+    loss_functions = {"LPIPS_notune":lpips.LPIPS(net='alex',lpips=False),
+              "LPIPS_tuned":lpips.LPIPS(net='alex',lpips=True),
+              "SSIM":SSIM(),
+              "L2":torch.nn.MSELoss()}
+    #for each loss function:
+    for loss_name,loss in loss_functions.items():
+        metrics_dico_list.append(get_reco_error(image, model, loss, loss_name))
+        #get the sharpness metric
+        metrics_dico_list.append(get_SAM_delta(image, model,loss))
+    
+    #put all the metrics in a single dir
+    for metric in metrics_dico_list:
+        metrics.update(metric)
+    
     return metrics
 
 
