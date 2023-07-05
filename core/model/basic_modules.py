@@ -2,9 +2,12 @@
 #   to make building a network with constraints here and there easier.
 import torch
 import torch.nn as nn
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import torchvision
 import warnings
-from CBAM import Constrained_CBAM
+from core.model.attention_modules import Constrained_CBAM
 
 #-------no-constraint module : a replacement for the sparsity cstraint when we want none.
 #(it's literally just a relu, not leaky because VGG19 is not leaky.)
@@ -132,14 +135,18 @@ class VGG19_Features(nn.Module):
 
     def forward(self,x):
         kl=0.
+        att=0.
         for layer in self.feature_extractor:
             #get the kl separately if there's a constraint
-            if isinstance(layer, ConvBlock) or isinstance(layer,Constrained_CBAM):
+            if isinstance(layer, ConvBlock):
                 x,kl_temp=layer(x)
                 kl+=kl_temp
+            elif isinstance(layer,Constrained_CBAM):
+                x,att_temp=layer(x)
+                att+=kl_temp
             else:
                 x=layer(x)
-        return x,kl
+        return x,kl,att
         
     def get_activations(self,x,layer_name):
         with torch.no_grad():

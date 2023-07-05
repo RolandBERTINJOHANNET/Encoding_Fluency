@@ -38,7 +38,7 @@ class OptionalSplitDataset(Dataset):
         self.file_paths = self.get_all_image_paths(root_dir)
         self.warned = False
         
-        if self.device is not None and not torch.cuda.is_available():
+        if self.device is not torch.device("cpu") and not torch.cuda.is_available():
             warnings.warn("The specified device is not available. Defaulting to CPU.")
             self.device = torch.device('cpu')
         
@@ -49,8 +49,10 @@ class OptionalSplitDataset(Dataset):
         
         if split == "train":
             self.file_paths = self.file_paths[:split_index]
-        else:
+        elif split == "test":
             self.file_paths = self.file_paths[split_index:]
+        elif split=="none":
+            pass
         
     def get_all_image_paths(self, root_dir):
         """
@@ -80,7 +82,7 @@ class OptionalSplitDataset(Dataset):
         **Returns**:
             int: The total number of images.
         """
-        return len(self.file_paths)
+        return 500#len(self.file_paths)
     
     @staticmethod
     def process_image(image_path, device):
@@ -106,8 +108,8 @@ class OptionalSplitDataset(Dataset):
         
         image = Resize((224, 224))(image)# Resize the image to 224x224
         
-        # Add a batch dimension and move the image to the specified device
-        image = image.unsqueeze(0).to(device)
+        # move the image to the specified device
+        image = image.to(device)
         
         return image
     

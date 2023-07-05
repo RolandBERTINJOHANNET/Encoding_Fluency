@@ -1,5 +1,8 @@
 import torch.nn as nn
-import VGG_vae_modules
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from core.model import basic_modules
 import warnings
 
 #pixelshuffle module :
@@ -17,26 +20,28 @@ class PixelShuffler(nn.Module):
 class Model(nn.Module):
   #this init function is hard to read, but basically it constructs the VAE with a sparsity constraint on the 
   #layer_sparsity_cstraint-th layers (it being a list)
-  def __init__(self,device,layer_sparsity_cstraint=[],attention=[],sparsity_coeff=1.,sparsity_param=0.001):
+  def __init__(self,model_name,device,layer_sparsity_cstraint=[],attention=[],sparsity_coeff=1.,sparsity_param=0.001):
     super().__init__()
     self.latent_dim = 512
+    self.name = model_name
     
     #some of the constraint indices need to be passed to the vgg_features module, some to the ones after
     vgg_cstraints = [index for index in layer_sparsity_cstraint if index<16]#there's 16 convs in vgg19
-    other_cstraints = [index-15 for index in layer_sparsity_cstraint if index>16]#after vgg, first index is 1
+    other_cstraints = [index-15 for index in layer_sparsity_cstraint if index>=16]#after vgg, first index is 1
     
     #---------------------encoder
     modules = []
     in_channels = self.latent_dim
 
-    modules.append(VGG_vae_modules.VGG19_Features(vgg_cstraints,attention, sparsity_param, sparsity_coeff))
-    modules.append(VGG_vae_modules.MeanStdFeatureMaps(in_channels,self.latent_dim))
-    modules.append(VGG_vae_modules.Reparametrization(device))
+    modules.append(basic_modules.VGG19_Features(vgg_cstraints,attention, sparsity_param, sparsity_coeff))
+    modules.append(basic_modules.MeanStdFeatureMaps(in_channels,self.latent_dim))
+    modules.append(basic_modules.Reparametrization(device))
     self.encoder = nn.Sequential(*modules)
     
     #now add the constraints
     for layer_idx in other_cstraints:
-        print("layer idx : ",layer_idx)
+        if layer_idx>2:
+            raise ValueError("you provided an out-of-bounds index for the sparsity constraint location !")
         self.encoder[layer_idx].add_constraint(sparsity_param,sparsity_coeff)
 
     #-------------decoder
@@ -61,7 +66,7 @@ class Model(nn.Module):
             in_channels=int(out_chan/(upscale_factor**2))#the pixelshuffler divides by the square of the number of chans
         else:
             modules.append(
-                VGG_vae_modules.ResBlock(in_channels)
+                basic_modules.ResBlock(in_channels)
                 )
     
     #add a final layer with a sigmoid,no pixelshuffler and no batch norm
@@ -75,14 +80,16 @@ class Model(nn.Module):
 
 #----------------------------------------------------------------------------forward
   def forward(self,x):
-    #loop over encoder layers
-    kl = 0.
-    for layer in self.encoder:
-        x,kl_temp=layer(x)
-        kl+=kl_temp
+    #there's just 3 encoder groups
+    x,kl,att = self.encoder[0](x)#convs
+    x,kl_temp = self.encoder[1](x)#mean-std
+    kl+=kl_temp
+    x,kl_temp = self.encoder[2](x)#reparametrization
+    kl+=kl_temp
+    #loop over decoder layers
     for module in self.decoder:
         x = module(x)
-    return x,kl
+    return x,kl,att
     
 #----------------------------------------------------------------------------misc
   def get_activations(self,x,layer_name):

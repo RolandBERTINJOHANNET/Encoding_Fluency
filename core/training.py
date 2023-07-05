@@ -1,12 +1,93 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Mar 22 13:23:00 2023
-
-@author: renoult
-"""
-
+import matplotlib.pyplot as plt
 import torch
+import tqdm
+
+def train_the_model(model, dataset, loss, opt, nb_epochs, save=10):
+    """
+    Train a model for a specified number of epochs.
+
+    Args:
+    model: The model to train.
+    dataset: The dataset to train on.
+    loss: The loss function to use.
+    opt: The optimizer to use.
+    nb_epochs: The number of epochs to train for.
+    save: The frequency at which to save the model.
+
+    Returns:
+    A tuple of two lists: the reconstruction loss per batch and the KL divergence per batch.
+    """
+    if not dataset:
+        raise ValueError("Dataset is empty.")
+
+    reconstruction_loss_per_batch = []
+    kl_divergence_per_batch = []
+    attention_per_batch = []
+
+    for epoch in range(nb_epochs):
+        batch_iter = tqdm.tqdm(dataset, unit="batch", total=len(dataset))
+        for X_b in batch_iter:
+            kl_divergence = None  # reinit kl loss
+            pred, kl_divergence,attention_L1_norm = model(X_b)
+            reconstruction_loss = loss(pred, X_b).mean()
+
+            reconstruction_loss_per_batch.append(reconstruction_loss.item())
+            kl_divergence_per_batch.append(float(kl_divergence))
+            attention_per_batch.append(float(attention_L1_norm))
+
+            opt.zero_grad()
+
+            (reconstruction_loss + kl_divergence + attention_L1_norm).backward()
+            opt.step()
+            batch_iter.set_description(f"reco loss: {reconstruction_loss.item()}, kl loss: {float(kl_divergence)}, attention loss: {float(attention_L1_norm)}")
+
+            plot_inNout(dataset, model, epoch,model.name)
+
+    return reconstruction_loss_per_batch, kl_divergence_per_batch, attention_per_batch
+
+
+def plot_inNout(data, model, epoch, model_name):
+    """
+    Plot the original images and their reconstructions side by side.
+
+    Args:
+    data: The original images.
+    model: The model to use for reconstruction.
+    epoch: The current epoch.
+    model_name: The name of the model (for saving path purposes)
+    """
+    # Select a batch of data
+    images = next(iter(data))
+
+    # Pass the images through the model
+    with torch.no_grad():
+        try:
+            reconstructions, _, _ = model(images)
+        except Exception as e:
+            print(f"Failed to generate reconstructions: {e}")
+            return
+
+    # Move the images and reconstructions to cpu and convert to numpy arrays
+    images = images.cpu().numpy()
+    reconstructions = reconstructions.cpu().numpy()
+
+    # Create a figure for the plot
+    fig, axs =plt.subplots(2, 3, figsize=(9, 6))
+
+    # Plot the original images and the reconstructions
+    for i in range(3):
+        # Original images
+        axs[0, i].imshow(images[i].transpose(1, 2, 0))
+        axs[0, i].axis('off')
+
+        # Reconstructions
+        axs[1, i].imshow(reconstructions[i].transpose(1, 2, 0))
+        axs[1, i].axis('off')
+
+    # Save the plot to a file
+    plt.savefig(f"{model_name}/in_out_plot_epoch_{epoch}.png")
+    plt.close(fig)
+
 
 
 class SAM(torch.optim.Optimizer):
