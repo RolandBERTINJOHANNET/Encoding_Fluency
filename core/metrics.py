@@ -3,12 +3,15 @@
 #but the objective was to maintain readability and simplicity as metrics extraction is usually done on
 #a couple hundred images and thus is not very expensive.
 import sys
-sys.path.append("../../core/","../../core/model/")
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core/")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core/model/")))
 import data
 import torch
-import SAM_opt
+import training
 import lpips
-from torchmetrics import StructuralSimilarityIndexMeasure as SSIM
+import copy
+from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 
 def get_metrics_image(image_path,model):
     """Extract and return all the metrics from the processing of an image at a certain path"""
@@ -17,8 +20,9 @@ def get_metrics_image(image_path,model):
 
     metrics = {}
 
-    #read and normalize image
-    image = data.CustomDataset.process_image(image_path, torch.device("cpu"))
+    #read and normalize image + add batch dimension
+    image = data.OptionalSplitDataset.process_image(image_path, model.device)[None,:]
+    print(f"image.shape : {image.shape}")
 
     #accumulate all metrics dictionnaries into metrics_dico_list -- at the end, put them all together into a single dico
     #get gini, l1, kurtosis and the attention featuremaps L1 norms
@@ -29,9 +33,9 @@ def get_metrics_image(image_path,model):
 
     
     #get the 2 lpips reconstruction errors, the L2 and SSIM errors
-    loss_functions = {"LPIPS_notune":lpips.LPIPS(net='alex',lpips=False),
-              "LPIPS_tuned":lpips.LPIPS(net='alex',lpips=True),
-              "SSIM":SSIM(),
+    loss_functions = {"LPIPS_notune":lpips.LPIPS(net='alex',lpips=False).to(model.device),
+              "LPIPS_tuned":lpips.LPIPS(net='alex',lpips=True).to(model.device),
+              "SSIM":SSIM().to(model.device),
               "L2":torch.nn.MSELoss()}
     #for each loss function:
     for loss_name,loss in loss_functions.items():
@@ -63,19 +67,19 @@ def get_gini(image,model):
     result = {}
     for layer in model.layers:
         with torch.no_grad():
-            #extract for the given layer and take away the min to have no negative values
             activations = model.get_activations(image,layer)
-            activations = activations - (torch.min(activations,dim=1)[0].reshape(len(activations),1))
-
             #reorder activations into a 1D tensor
             activations = activations.flatten(start_dim=1)
+            #extract for the given layer and take away the min to have no negative values
+            activations = activations - (torch.min(activations,dim=1)[0].reshape(len(activations),1))
+
             
             #compute gini
             n = activations.shape[1]#length for each image
             activations = torch.sort(activations.cpu(),dim=1)[0].to(torch.device("cuda:0"))#sort the list for each image (on the cpu to prevent oom)
             activations = torch.cumsum(activations,dim=1)
             #(the last gini step is in this line too)
-            result["Gini_"+layer]= torch.sum(torch.abs(activations))((n + 1 - 2 * activations.sum(dim=1) / activations[:,-1]).cpu() / n).cpu()
+            result["Gini_"+layer]= ((n + 1 - 2 * activations.sum(dim=1) / activations[:,-1]).cpu() / n)
     return result
 
 def get_kurtosis(image,model):
@@ -87,14 +91,14 @@ def get_kurtosis(image,model):
             #reorder activations into a 1D tensor
             activations = activations.flatten(start_dim=1)
             #compute kurtosis
-            result["kurtosis_"+layer]=torch.kurtosis(activations).cpu()
+            result["kurtosis_"+layer]= (((activations - activations.mean())**4).mean() / (activations.std()**4)).cpu()
     return result
 
 def get_attention(image,model):
     result = {}
     for layer in model.attention_layers:
         with torch.no_grad():
-            #extract for the given layer and take away the min to have no negative values
+            #extract for the given layer
             activations = model.get_activations(image,layer)
             #reorder activations into a 1D tensor
             activations = activations.flatten(start_dim=1)
@@ -105,23 +109,23 @@ def get_attention(image,model):
 def get_reco_error(image,model,loss_fun,loss_fun_name):
     #predict
     with torch.no_grad():
-        prediction,_ = model(image)
-        loss = loss_fun(prediction,image)#compute loss
-    return {"loss_fun_name":loss.detach().cpu()}
+        prediction,_,_ = model(image)
+        loss = loss_fun(prediction,image).flatten()#compute loss
+    return {f"{loss_fun_name}":loss.detach().cpu()}
 
 def get_SAM_delta(image,model,loss_fun):
-    model_copy = model.clone()#keep copy to revert to former version at the end
+    #model_copy = copy.deepcopy(model)#keep copy to revert to former version at the end
 
     #define the SAM optimizer
-    opt = SAM_opt.SAM(model.parameters(), torch.optim.Adam)
+    opt = training.SAM(model.parameters(), torch.optim.Adam)
     #predict
-    prediction,_ = model(image)
+    prediction,_,_ = model(image)
     loss = loss_fun(prediction,image)
     loss.backward()
     opt.first_step(zero_grad=True)#step towards local maximum
-    prediction_max,_ = model(image)#predict from local max
-    loss_max = loss_fun(prediction,image)#compute loss from local max
+    prediction_max,_,_ = model(image)#predict from local max
+    loss_max = loss_fun(prediction_max,image)#compute loss from local max
 
     #revert to former version
-    model = model_copy
+    #model = model_copy
     return {"SAM":(loss_max-loss).detach().cpu()}

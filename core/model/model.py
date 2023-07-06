@@ -1,6 +1,8 @@
 import torch.nn as nn
+import torch
 import sys
 import os
+import hiddenlayer as hl
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from core.model import basic_modules
 import warnings
@@ -24,6 +26,7 @@ class Model(nn.Module):
     super().__init__()
     self.latent_dim = 512
     self.name = model_name
+    self.device=torch.device(str(device))
     
     #some of the constraint indices need to be passed to the vgg_features module, some to the ones after
     vgg_cstraints = [index for index in layer_sparsity_cstraint if index<16]#there's 16 convs in vgg19
@@ -35,7 +38,7 @@ class Model(nn.Module):
 
     modules.append(basic_modules.VGG19_Features(vgg_cstraints,attention, sparsity_param, sparsity_coeff))
     modules.append(basic_modules.MeanStdFeatureMaps(in_channels,self.latent_dim))
-    modules.append(basic_modules.Reparametrization(device))
+    modules.append(basic_modules.Reparametrization(self.device))
     self.encoder = nn.Sequential(*modules)
     
     #now add the constraints
@@ -78,6 +81,13 @@ class Model(nn.Module):
             )
     self.decoder = nn.Sequential(*modules)
 
+    #get layer names for name-driven activation access by looping over layer names
+    self.layers = self.encoder[0].layers
+    self.attention_layers = self.encoder[0].attention_layers
+    self.layers+=[self.encoder[1].name+("_mu"),self.encoder[1].name+("_std"),self.encoder[2].name]
+    print("\n\nlayers : ",self.layers)
+    print("\n\nattention_layers : ",self.attention_layers)
+    
 #----------------------------------------------------------------------------forward
   def forward(self,x):
     #there's just 3 encoder groups
@@ -94,22 +104,22 @@ class Model(nn.Module):
 #----------------------------------------------------------------------------misc
   def get_activations(self,x,layer_name):
       #feature extractor has 16 layers so it is treated separately
-      activations_convs = self.modules[0].get_activations()
+      activations_convs = self.encoder[0].get_activations(x,layer_name)
       if activations_convs is not None:
         return activations_convs
       else:#if the layer isn't one of the convs, just feedforward
         x = self.encoder[0](x)[0]
       #try meanstdfeaturemaps
       if "MeanStdFeatureMaps" in layer_name:
-          return self.encoder.modules[1].get_activations(x,"mu" if "mu" in layer_name else "sigma")
+          return self.encoder[1].get_activations(x,"mu" if "mu" in layer_name else "sigma")
       else:
-          x = self.encoder.modules[1](x)
+          x = self.encoder[1](x)[0]
       #try reparametrization
       if "Reparametrization" in layer_name:
-          return self.encoder.modules[2].get_activations(x)
+          return self.encoder[2].get_activations(x)
           
  
-      warnings.warn("\n!!!!\n!!!!!!\n      name given to model.get_activations ("+str(layer_name)+") doesn't exist !\n")
+      raise ValueError("\n!!!!\n!!!!!!\n      name given to model.get_activations ("+str(layer_name)+") doesn't exist !\n")
       return None
   
   def encode(self,x,sample=False):
@@ -122,3 +132,11 @@ class Model(nn.Module):
 
   def decode(self,x):
     return self.decoder(x)
+
+
+  def draw_model(self, filename):
+    # Create a hiddenlayer graph from the model
+    graph = hl.build_graph(self, torch.zeros([1, 3, 224, 224]).to(self.device))
+
+    # Save the graph to a file
+    graph.save(filename)

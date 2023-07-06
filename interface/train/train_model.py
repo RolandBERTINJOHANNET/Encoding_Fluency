@@ -37,6 +37,8 @@ model = Model(model_name=model_name,**params['model_params']).to(device)
 optimizer = optim.Adam(model.parameters(), lr=params['learning_rate'])
 loss_fn = lpips.LPIPS(net='alex').to(device)
 
+model.draw_model("test")
+
 # Train the model
 reconstruction_loss, kl_divergence, attention = train_the_model(model, data_loader, loss_fn, optimizer, params['num_epochs'])
 

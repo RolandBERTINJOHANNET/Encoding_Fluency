@@ -24,7 +24,7 @@ class OptionalSplitDataset(Dataset):
     """
     def __init__(self, root_dir, split="train", device=None):
         """
-        The constructor for CustomDataset class.
+        The constructor for OptionalSplitDataset class.
 
         This method initializes the dataset object, it sets the device where the images will be loaded, 
         gets all the image file paths from the root directory and sets the split for the dataset.

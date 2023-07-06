@@ -1,5 +1,7 @@
 import sys
-sys.path.append("../../core/","../../core/model/")
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core/")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core/model/")))
 import metrics
 import torch
 import model
@@ -8,20 +10,16 @@ import pandas as pd
 
 # Load model parameters
 model_name = input("Enter a model name : ")
-params = json.load(open("../models/parameters/"+model_name))
+params = json.load(open(f"../train/{model_name}/parameters/{model_name}.json"))
 
 # Create model instance
-model_instance = model.Model(
-    torch.device("cpu"),
-    layer_sparsity_cstraint=params["constraint"],
-    attention=params["attention"],
-    sparsity_coeff=0.,sparsity_param=0.0
-)
-model_instance.load_state_dict(torch.load("../models/weights/"+model_name))# Load weights
+model = model.Model(model_name=model_name,**params['model_params']).to(torch.device(params['model_params']["device"]))
+
+model.load_state_dict(torch.load(f"../train/{model_name}/weights/{model_name}.pth"))# Load weights
 
 image_path = input("Enter an image path: ")# Ask for image path
 
-image_metrics = metrics.get_metrics_image(image_path, model_instance)# Get the metrics
+image_metrics = metrics.get_metrics_image(image_path, model)# Get the metrics
 
 df = pd.DataFrame(image_metrics, index=[image_path])# Convert the metrics to a pandas DataFrame
 

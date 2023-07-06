@@ -81,7 +81,7 @@ class ConvBlock(nn.Module):
     def get_activations(self,x):
         with torch.no_grad():
             x = self.conv(x)
-            return self.constraint(x)
+            return self.constraint(x)[0]
     
 #-------vgg featuremaps : extracts pretrained vgg19 features extractors, organizes them in a module
 #where you can apply the sparsity constraints anywhere
@@ -131,6 +131,9 @@ class VGG19_Features(nn.Module):
                   idx+=1
               ctr+=1
           idx+=1
+      #get layer names for name-driven activation access by looping over layer names  attention_layers
+      self.layers = [layer.name for layer in self.feature_extractor if isinstance(layer,ConvBlock)]
+      self.attention_layers = [layer.name for layer in self.feature_extractor if isinstance(layer,Constrained_CBAM)]
       
 
     def forward(self,x):
@@ -157,7 +160,6 @@ class VGG19_Features(nn.Module):
                     return x
                 else:#keep feeding forward
                     x = layer(x)[0].detach() if isLayer else layer(x).detach() #maxpool doesn't return a kl so no [0]
-            warnings.warn("\n!!!!\n!!!!!!\n      layer name given to VGG19.get_activations ("+str(layer_name)+") does not exist !\n")
             return None
            
     def __len__(self):#ignores the pooling and relu "layers"
@@ -189,8 +191,9 @@ class MeanStdFeatureMaps(nn.Module):
     #mean_or_std is necessary even on non-meanstd layers, because of bad design.
     def get_activations(self,x,mean_or_std):
         with torch.no_grad():
-            if mean_or_std!="mu" and mean_or_std!="std":
-                    warnings.warn("\n\n!!!!!!!name problem in the MeanStdFeatureMaps layer of the network : \n"
+            if mean_or_std!="mu" and mean_or_std!="sigma":
+                    print(f"mean_or_std : {mean_or_std}")
+                    raise ValueError("\n\n!!!!!!!name problem in the MeanStdFeatureMaps layer of the network : \n"
                           "        you need to specify '_mu' or '_sigma' after 'MeanStdFeatureMaps'")
                     return None
             x = self.conv_stds(x) if mean_or_std=="sigma" else self.conv_means(x)
@@ -223,9 +226,11 @@ class Reparametrization(nn.Module):
     #mean_or_std is necessary even on non-meanstd layers, because of bad design.
     def get_activations(self,x):
         with torch.no_grad():
+            print(x.shape)
             mean = x[:,:int(x.shape[1]/2)]
             std = x[:,int(x.shape[1]/2):]
             epsilon = self.normal.sample((std.shape[0],std.shape[1],
                                           std.shape[2],std.shape[3]))
             x = mean + epsilon*std
-            return self.constraint(x)
+            print(self.constraint(x)[0].shape)
+            return self.constraint(x)[0]

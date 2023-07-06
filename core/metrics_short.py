@@ -9,14 +9,14 @@ from torchmetrics import StructuralSimilarityIndexMeasure as SSIM
 class MetricExtractor:
     def __init__(self, model, image_path):
         self.model = model
-        self.image = data.CustomDataset.process_image(image_path, torch.device("cpu"))
+        self.image = data.OptionalSplitDataset.process_image(image_path, torch.device("cpu"))
         self.loss_functions = {"LPIPS_notune":lpips.LPIPS(net='alex',lpips=False),
                                "LPIPS_tuned":lpips.LPIPS(net='alex',lpips=True),
                                "SSIM":SSIM(),
                                "L2":torch.nn.MSELoss()}
 
     def __call__(self, image_path):
-        self.image = data.CustomDataset.process_image(image_path, torch.device("cpu"))
+        self.image = data.OptionalSplitDataset.process_image(image_path, torch.device("cpu"))
         metrics = {}
         for layer in self.layers:
             metrics.update(self.get_metrics(layer))
