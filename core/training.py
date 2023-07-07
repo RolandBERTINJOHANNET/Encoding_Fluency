@@ -53,7 +53,7 @@ def plot_inNout(data, model, epoch, model_name):
     Args:
     data: The original images.
     model: The model to use for reconstruction.
-    epoch: The current epoch.
+    epoch: The current epoch (or, if during metrics extraction, the desired output path).
     model_name: The name of the model (for saving path purposes)
     """
     # Select a batch of data
@@ -74,6 +74,7 @@ def plot_inNout(data, model, epoch, model_name):
     # Create a figure for the plot
     fig, axs =plt.subplots(2, 3, figsize=(9, 6))
 
+
     # Plot the original images and the reconstructions
     for i in range(3):
         # Original images
@@ -85,8 +86,12 @@ def plot_inNout(data, model, epoch, model_name):
         axs[1, i].axis('off')
 
     # Save the plot to a file
-    plt.savefig(f"{model_name}/in_out_plot_epoch_{epoch}.png")
-    plt.close(fig)
+    if isinstance(epoch,str):
+        plt.savefig(f"{epoch}/in_out_plot.png")
+        plt.close(fig)
+    else:
+        plt.savefig(f"{model_name}/in_out_plot_epoch_{epoch}.png")
+        plt.close(fig)
 
 
 class SAM(torch.optim.Optimizer):

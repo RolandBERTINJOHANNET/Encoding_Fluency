@@ -6,7 +6,6 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import torchvision
-import warnings
 from core.model.attention_modules import Constrained_CBAM
 
 #-------no-constraint module : a replacement for the sparsity cstraint when we want none.
@@ -61,7 +60,7 @@ class ResBlock(nn.Module):
 class ConvBlock(nn.Module):
     def __init__(self,conv2d,idx):
       super().__init__()
-      self.name = "ConvBlock("+str(idx)+")"
+      self.name = "ConvBlock("+str(idx)+")" + "_ReLU"
       
       self.conv = conv2d
       self.constraint = NoConstraint()
@@ -72,10 +71,8 @@ class ConvBlock(nn.Module):
     
     def add_constraint(self,constraint_param,scaling_param):
         self.constraint = SparsityConstraint(constraint_param, scaling_param)
+        self.name = self.name.replace("ReLU","Sigmoid")
         print("\n\nadding a sparsity constraint on layer :",self.name,"\n")
-        
-    def print_name(self):
-        print("layer :",self.name,"\n")
         
     #mean_or_std is necessary even on non-meanstd layers, because of bad design.
     def get_activations(self,x):
@@ -88,7 +85,7 @@ class ConvBlock(nn.Module):
 class VGG19_Features(nn.Module):
     def __init__(self,constraint_locations,attention,constraint_param,scaling_param):
       super().__init__()
-      self.name = "VGG19_Feature_extraction"
+      self.name = "VGG19_Feature_extraction" + "_ReLU"
       features = torchvision.models.vgg19(pretrained=False).features
       
       #extract just the convs from VGG19, wrap into ConvBlocks
@@ -98,10 +95,8 @@ class VGG19_Features(nn.Module):
           if isinstance(module,torch.nn.Conv2d):
               i+=1
               convs.append(ConvBlock(module,i))
-      print("number of convs extracted : ",len(convs))
       #add constraints where desired
       for position in constraint_locations:
-          convs[position].print_name()
           convs[position].add_constraint(constraint_param,scaling_param)
       #re-build the feature extractor with the pools etc. (ugly, hardcoded :/)
       self.feature_extractor = nn.Sequential(
@@ -119,6 +114,8 @@ class VGG19_Features(nn.Module):
       
       
       #finally add the attention modules
+      if True in [att>15 or att<=0 for att in attention]:
+          raise ValueError("You provided attention indices that are either too high or too low !")
       nb_filters = [64,64,128,128,256,256,256,256,512,512,512,512,512,512,512,512]
       attention.sort()
       attention.reverse()
@@ -127,13 +124,14 @@ class VGG19_Features(nn.Module):
       while idx<len(self.feature_extractor):
           if isinstance(self.feature_extractor[idx],ConvBlock):
               if ctr in attention:
-                  self.feature_extractor.insert(idx,Constrained_CBAM(nb_filters[ctr-1],constraint_param, scaling_param, idx))
+                  self.feature_extractor.insert(idx,Constrained_CBAM(nb_filters[ctr-1],constraint_param, scaling_param, ctr))
                   idx+=1
               ctr+=1
           idx+=1
       #get layer names for name-driven activation access by looping over layer names  attention_layers
       self.layers = [layer.name for layer in self.feature_extractor if isinstance(layer,ConvBlock)]
       self.attention_layers = [layer.name for layer in self.feature_extractor if isinstance(layer,Constrained_CBAM)]
+      self.all_layers = [layer.name for layer in self.feature_extractor if isinstance(layer,Constrained_CBAM) or isinstance(layer,ConvBlock)]
       
 
     def forward(self,x):
@@ -170,7 +168,7 @@ class VGG19_Features(nn.Module):
 class MeanStdFeatureMaps(nn.Module):
     def __init__(self,in_channels,latent_dim):
       super().__init__()
-      self.name = "MeanStdFeatureMaps"
+      self.name = "MeanStdFeatureMaps"+ "_ReLU"
       
       #convs to get the two param featuremaps for latent space sample parametrization.
       self.conv_means = nn.Conv2d(in_channels,latent_dim,3,1,1,padding_mode="reflect")
@@ -185,6 +183,7 @@ class MeanStdFeatureMaps(nn.Module):
     
     def add_constraint(self,constraint_param,scaling_param):
         self.constraint = SparsityConstraint(constraint_param, scaling_param)
+        self.name = self.name.replace("ReLU","Sigmoid")
         print("\n\nadding a sparsity constraint on layer :",self.name,"\n")
     
     
@@ -192,7 +191,6 @@ class MeanStdFeatureMaps(nn.Module):
     def get_activations(self,x,mean_or_std):
         with torch.no_grad():
             if mean_or_std!="mu" and mean_or_std!="sigma":
-                    print(f"mean_or_std : {mean_or_std}")
                     raise ValueError("\n\n!!!!!!!name problem in the MeanStdFeatureMaps layer of the network : \n"
                           "        you need to specify '_mu' or '_sigma' after 'MeanStdFeatureMaps'")
                     return None
@@ -204,7 +202,7 @@ class MeanStdFeatureMaps(nn.Module):
 class Reparametrization(nn.Module):
     def __init__(self,device):
       super().__init__()
-      self.name = "Reparametrization"
+      self.name = "Reparametrization" + "_ReLU"
       
       self.constraint = NoConstraint()
       #trick to get sampling on the device : pass the params on the device
@@ -221,16 +219,15 @@ class Reparametrization(nn.Module):
     
     def add_constraint(self,constraint_param,scaling_param):
         self.constraint = SparsityConstraint(constraint_param, scaling_param)
+        self.name = self.name.replace("ReLU","Sigmoid")
         print("\n\nadding a sparsity constraint on layer :",self.name,"\n")
         
     #mean_or_std is necessary even on non-meanstd layers, because of bad design.
     def get_activations(self,x):
         with torch.no_grad():
-            print(x.shape)
             mean = x[:,:int(x.shape[1]/2)]
             std = x[:,int(x.shape[1]/2):]
             epsilon = self.normal.sample((std.shape[0],std.shape[1],
                                           std.shape[2],std.shape[3]))
             x = mean + epsilon*std
-            print(self.constraint(x)[0].shape)
             return self.constraint(x)[0]

@@ -1,8 +1,6 @@
 import torch
-import math
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 #---------------------sparsity constraint without a sigmoid
 class CBAM_SparsityConstraint(nn.Module):
@@ -80,10 +78,33 @@ class ChannelGate(nn.Module):
 
         l1 = channel_att_sum.abs().mean()#when I apply after the sigmoid it gets stuck and doesn't go down allt he way to 0
         
-        scale = F.sigmoid( channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
+        scale = torch.sigmoid( channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
         
         
         return x * scale,l1
+    def get_att_map(self,x):
+        with torch.no_grad():
+            channel_att_sum = None
+            for pool_type in self.pool_types:
+                if pool_type=='avg':
+                    avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                    channel_att_raw = self.mlp( avg_pool )
+                elif pool_type=='max':
+                    max_pool = F.max_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                    channel_att_raw = self.mlp( max_pool )
+                elif pool_type=='lp':
+                    lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                    channel_att_raw = self.mlp( lp_pool )
+                elif pool_type=='lse':
+                    # LSE pool only
+                    lse_pool = logsumexp_2d(x)
+                    channel_att_raw = self.mlp( lse_pool )
+    
+                if channel_att_sum is None:
+                    channel_att_sum = channel_att_raw
+                else:
+                    channel_att_sum = channel_att_sum + channel_att_raw
+            return channel_att_sum
 
 def logsumexp_2d(tensor):
     tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
@@ -95,14 +116,12 @@ class ChannelPool(nn.Module):
     def forward(self, x):
         return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
 
-
-
 #the main module --
 class Constrained_CBAM(nn.Module):
     def __init__(self, gate_channels, constraint_param, scaling_param, index, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
         super().__init__()
         self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
-        self.name = "attention"+str(index)
+        self.name = "attention"+str(index)+"_Sigmoid"
         
     def forward(self, x):
         l1=0.
@@ -110,6 +129,4 @@ class Constrained_CBAM(nn.Module):
         return x_out,l1
     
     def get_activations(self,x):
-        with torch.no_grad():
-            x_out= self.ChannelGate(x)
-            return x_out
+        return self.ChannelGate.get_att_map(x)

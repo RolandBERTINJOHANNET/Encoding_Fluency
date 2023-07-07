@@ -2,10 +2,8 @@ import torch.nn as nn
 import torch
 import sys
 import os
-import hiddenlayer as hl
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from core.model import basic_modules
-import warnings
 
 #pixelshuffle module :
 class PixelShuffler(nn.Module):
@@ -85,8 +83,7 @@ class Model(nn.Module):
     self.layers = self.encoder[0].layers
     self.attention_layers = self.encoder[0].attention_layers
     self.layers+=[self.encoder[1].name+("_mu"),self.encoder[1].name+("_std"),self.encoder[2].name]
-    print("\n\nlayers : ",self.layers)
-    print("\n\nattention_layers : ",self.attention_layers)
+    self.all_layers = self.encoder[0].all_layers + [self.encoder[1].name+("_mu"),self.encoder[1].name+("_std"),self.encoder[2].name]
     
 #----------------------------------------------------------------------------forward
   def forward(self,x):
@@ -132,11 +129,3 @@ class Model(nn.Module):
 
   def decode(self,x):
     return self.decoder(x)
-
-
-  def draw_model(self, filename):
-    # Create a hiddenlayer graph from the model
-    graph = hl.build_graph(self, torch.zeros([1, 3, 224, 224]).to(self.device))
-
-    # Save the graph to a file
-    graph.save(filename)

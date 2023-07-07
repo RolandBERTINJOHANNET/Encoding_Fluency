@@ -82,7 +82,7 @@ class OptionalSplitDataset(Dataset):
         **Returns**:
             int: The total number of images.
         """
-        return 500#len(self.file_paths)
+        return 5000#len(self.file_paths)
     
     @staticmethod
     def process_image(image_path, device):
