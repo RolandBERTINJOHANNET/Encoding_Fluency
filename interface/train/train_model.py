@@ -11,6 +11,8 @@ from core.data import OptionalSplitDataset
 from core.model.model import Model
 from core.training import train_the_model
 import datetime
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)#lpips is old and has deprecation warnings
 
 # Prompt for path to JSON file containing model parameters
 params_path = input('Enter the path to the JSON file containing the model parameters: ')
@@ -61,8 +63,8 @@ plt.plot(attention)
 plt.title('Attention map L1 norm')
 plt.savefig(f'{model_name}/plots/attention_{model_name}.png')
 
-# Create a log file with the current date and time
-date_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+# Create a log file with some info
+date_time = datetime.datetime.now().strftime("%Y_%B_%d_%H:%M:%S")
 with open(f'{model_name}/{date_time}.log', 'w') as f:
     f.write(f'Saved model parameters to: {model_name}/parameters/{model_name}.json\n')
     f.write(f'Saved model weights to: {model_name}/weights/{model_name}.pth\n')

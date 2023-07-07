@@ -7,7 +7,7 @@ import torch
 import training
 import lpips
 import copy
-from torchmetrics import StructuralSimilarityIndexMeasure as SSIM
+from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 
 class MetricExtractor:
     def __init__(self, model):
@@ -69,4 +69,4 @@ class MetricExtractor:
         prediction_max, _, _ = self.model(self.image)
         loss_max = self.loss_functions[loss_name](prediction_max, self.image)
         self.model = model_copy#revert to former version
-        return {f"SAM_{loss_name}": (loss_max - loss).detach().cpu()}
+        return {f"SAM_{loss_name}": (loss_max - loss).detach().cpu().flatten()}

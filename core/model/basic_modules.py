@@ -72,7 +72,6 @@ class ConvBlock(nn.Module):
     def add_constraint(self,constraint_param,scaling_param):
         self.constraint = SparsityConstraint(constraint_param, scaling_param)
         self.name = self.name.replace("ReLU","Sigmoid")
-        print("\n\nadding a sparsity constraint on layer :",self.name,"\n")
         
     #mean_or_std is necessary even on non-meanstd layers, because of bad design.
     def get_activations(self,x):
@@ -184,7 +183,6 @@ class MeanStdFeatureMaps(nn.Module):
     def add_constraint(self,constraint_param,scaling_param):
         self.constraint = SparsityConstraint(constraint_param, scaling_param)
         self.name = self.name.replace("ReLU","Sigmoid")
-        print("\n\nadding a sparsity constraint on layer :",self.name,"\n")
     
     
     #mean_or_std is necessary even on non-meanstd layers, because of bad design.
@@ -220,7 +218,6 @@ class Reparametrization(nn.Module):
     def add_constraint(self,constraint_param,scaling_param):
         self.constraint = SparsityConstraint(constraint_param, scaling_param)
         self.name = self.name.replace("ReLU","Sigmoid")
-        print("\n\nadding a sparsity constraint on layer :",self.name,"\n")
         
     #mean_or_std is necessary even on non-meanstd layers, because of bad design.
     def get_activations(self,x):

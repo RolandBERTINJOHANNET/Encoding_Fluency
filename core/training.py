@@ -1,4 +1,8 @@
-import matplotlib.pyplot as plt
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../core/")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../core/model/")))
+import plotting
 import torch
 import tqdm
 
@@ -41,58 +45,9 @@ def train_the_model(model, dataset, loss, opt, nb_epochs, save=10):
             opt.step()
             batch_iter.set_description(f"reco loss: {reconstruction_loss.item()}, kl loss: {float(kl_divergence)}, attention loss: {float(attention_L1_norm)}")
 
-            plot_inNout(dataset, model, epoch,model.name)
+            plotting.plot_inNout(dataset, model, epoch,model.name)
 
     return reconstruction_loss_per_batch, kl_divergence_per_batch, attention_per_batch
-
-
-def plot_inNout(data, model, epoch, model_name):
-    """
-    Plot the original images and their reconstructions side by side.
-
-    Args:
-    data: The original images.
-    model: The model to use for reconstruction.
-    epoch: The current epoch (or, if during metrics extraction, the desired output path).
-    model_name: The name of the model (for saving path purposes)
-    """
-    # Select a batch of data
-    images = next(iter(data))
-
-    # Pass the images through the model
-    with torch.no_grad():
-        try:
-            reconstructions, _, _ = model(images)
-        except Exception as e:
-            print(f"Failed to generate reconstructions: {e}")
-            return
-
-    # Move the images and reconstructions to cpu and convert to numpy arrays
-    images = images.cpu().numpy()
-    reconstructions = reconstructions.cpu().numpy()
-
-    # Create a figure for the plot
-    fig, axs =plt.subplots(2, 3, figsize=(9, 6))
-
-
-    # Plot the original images and the reconstructions
-    for i in range(3):
-        # Original images
-        axs[0, i].imshow(images[i].transpose(1, 2, 0))
-        axs[0, i].axis('off')
-
-        # Reconstructions
-        axs[1, i].imshow(reconstructions[i].transpose(1, 2, 0))
-        axs[1, i].axis('off')
-
-    # Save the plot to a file
-    if isinstance(epoch,str):
-        plt.savefig(f"{epoch}/in_out_plot.png")
-        plt.close(fig)
-    else:
-        plt.savefig(f"{model_name}/in_out_plot_epoch_{epoch}.png")
-        plt.close(fig)
-
 
 class SAM(torch.optim.Optimizer):
     def __init__(self, params, base_optimizer, rho=0.05, adaptive=False, **kwargs):
