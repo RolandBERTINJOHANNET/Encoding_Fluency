@@ -2,13 +2,13 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core/")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core/model/")))
-import metrics
 import data
 import torch
 import model
 import json
 import pandas as pd
 from torch.utils.data import DataLoader
+from metrics_short import MetricExtractor
 
 # Load model parameters
 model_name = input("Enter a model name : ")
@@ -19,6 +19,9 @@ model = model.Model(model_name=model_name,**params['model_params']).to(torch.dev
 
 model.load_state_dict(torch.load(f"../train/{model_name}/weights/{model_name}.pth"))# Load weights
 
+# Create MetricExtractor instance
+metric_extractor = MetricExtractor(model)
+
 # Ask for the root directory of the images
 root_dir = input("Enter the root directory of the images: ")
 # Create dataset and dataloader
@@ -28,7 +31,7 @@ dataloader = DataLoader(dataset, batch_size=1)
 # Process each image in the dataset
 all_metrics = {}
 for image_path in dataset.file_paths:
-    image_metrics = metrics.get_metrics_image(image_path, model)
+    image_metrics = metric_extractor(image_path)
     all_metrics[image_path] = image_metrics
 
 # Convert the dictionary to a pandas DataFrame

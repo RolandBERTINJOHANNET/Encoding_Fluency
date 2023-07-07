@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core/")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core/model/")))
-import metrics
+import metrics_short
 import torch
 import model
 import json
@@ -19,7 +19,9 @@ model.load_state_dict(torch.load(f"../train/{model_name}/weights/{model_name}.pt
 
 image_path = input("Enter an image path: ")# Ask for image path
 
-image_metrics = metrics.get_metrics_image(image_path, model)# Get the metrics
+# Create MetricExtractor instance and get the metrics
+metric_extractor = metrics_short.MetricExtractor(model)
+image_metrics = metric_extractor(image_path)
 
 df = pd.DataFrame(image_metrics, index=[image_path])# Convert the metrics to a pandas DataFrame
 
