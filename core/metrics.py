@@ -1,3 +1,6 @@
+"""
+This module contains the `MetricExtractor` class, a utility for extracting various metrics from a given model. 
+"""
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../core/")))
@@ -10,7 +13,38 @@ import copy
 from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 
 class MetricExtractor:
+    """
+    A class for extracting various metrics from a given model.
+
+    This class is initialized with a model and sets up several loss functions. It is primarily used to calculate and return a dictionary of metrics for a given image. These metrics include layer-wise activations, L1 norms, Gini coefficients, kurtosis, and reconstruction errors based on different loss functions. The class also calculates the Stochastic Weight Averaging Gaussian (SWAG) delta for each loss function.
+
+    **Attributes**:
+        model (nn.Module): The PyTorch model from which to extract metrics.
+        loss_functions (dict): A dictionary of loss functions.
+
+    **Example usage**:
+
+    .. code-block:: python
+
+        from core.model.model import Model
+
+        # Initialize a model
+        model = Model(model_name='my_model', device='cuda')
+
+        # Initialize the MetricExtractor
+        metric_extractor = MetricExtractor(model)
+
+        # Use the MetricExtractor on an image
+        metrics = metric_extractor('path_to_image.jpg')
+
+    """
     def __init__(self, model):
+        """
+        Initialize the MetricExtractor with a model.
+
+        **Parameters**:
+            model (nn.Module): The PyTorch model from which to extract metrics.
+        """
         self.model = model
         self.loss_functions = {"LPIPS_notune":lpips.LPIPS(net='alex',lpips=False).to(self.model.device),
                                "LPIPS_tuned":lpips.LPIPS(net='alex',lpips=True).to(self.model.device),
@@ -18,6 +52,15 @@ class MetricExtractor:
                                "L2":torch.nn.MSELoss()}
 
     def __call__(self, image_path):
+        """
+        Calculate and return a dictionary of metrics for a given image.
+
+        **Parameters**:
+            image_path (str): The path to the image.
+
+        **Returns**:
+            dict: A dictionary of metrics.
+        """
         self.image = data.OptionalSplitDataset.process_image(image_path, self.model.device)[None,:]
         metrics = {}
         for layer in self.model.layers + self.model.attention_layers:
@@ -32,6 +75,15 @@ class MetricExtractor:
 
 
     def get_activations(self, layer):
+        """
+        Get the activations of a given layer for the current image.
+
+        **Parameters**:
+            layer (str): The name of the layer.
+
+        **Returns**:
+            torch.Tensor: The activations of the layer.
+        """
         activations = self.model.get_activations(self.image, layer)
         activations = activations.flatten(start_dim=1)
         return activations
