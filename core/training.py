@@ -6,20 +6,62 @@ import plotting
 import torch
 import tqdm
 
-def train_the_model(model, dataset, loss, opt, nb_epochs, save=10):
+def train_the_model(model, dataset, loss, opt, nb_epochs):
     """
     Train a model for a specified number of epochs.
 
-    Args:
-    model: The model to train.
-    dataset: The dataset to train on.
-    loss: The loss function to use.
-    opt: The optimizer to use.
-    nb_epochs: The number of epochs to train for.
-    save: The frequency at which to save the model.
+    This function takes a model, a dataset, a loss function, an optimizer, and a number of epochs, and trains the model on the dataset for the specified number of epochs. It returns the reconstruction loss and KL divergence for each batch.
 
-    Returns:
-    A tuple of two lists: the reconstruction loss per batch and the KL divergence per batch.
+    **Parameters:**
+
+    - **model** (*nn.Module instance*): The PyTorch model to train.
+
+    - **dataset** (*DataLoader instance*): The DataLoader instance providing batches of images.
+
+    - **loss** (*nn.Module instance*): The PyTorch loss function to use.
+
+    - **opt** (*torch.optim.Optimizer instance*): The PyTorch optimizer to use.
+
+    - **nb_epochs** (*int*): The number of epochs to train for.
+
+    - **save** (*int, optional*): The frequency at which to save the model. Default is 10.
+
+    **Returns:**
+
+    - **tuple**: A tuple of three lists: the reconstruction loss per batch, the KL divergence per batch, and the attention loss per batch.
+
+    **Raises:**
+
+    - **ValueError**: If the dataset is empty.
+
+    **Example usage:**
+
+    .. code-block:: python
+
+        from torch.utils.data import DataLoader
+        from torchvision.transforms import ToTensor
+        from torch import nn, optim
+        from core.model.models import Model
+        from core.data import OptionalSplitDataset
+
+        # Initialize a DataLoader instance
+        dataset = OptionalSplitDataset(root_dir='path_to_dataset', split='none', device='cuda')
+        data = DataLoader(dataset, batch_size=64)
+
+        # Initialize a model
+        model = Model(model_name='my_model', device='cuda')
+
+        # Specify the loss function and optimizer
+        loss = nn.MSELoss()
+        opt = optim.Adam(model.parameters())
+
+        # Specify the number of epochs and save frequency
+        nb_epochs = 100
+        save = 10
+
+        # Call the function
+        reconstruction_loss_per_batch, kl_divergence_per_batch, attention_per_batch = train_the_model(model, data, loss, opt, nb_epochs, save)
+
     """
     if not dataset:
         raise ValueError("Dataset is empty.")
@@ -49,6 +91,11 @@ def train_the_model(model, dataset, loss, opt, nb_epochs, save=10):
 
     return reconstruction_loss_per_batch, kl_divergence_per_batch, attention_per_batch
 
+
+
+
+#this is taken straight from https://github.com/davda54/sam
+#in this project we only use this to perform the first_step when extracting the sharpness metric
 class SAM(torch.optim.Optimizer):
     def __init__(self, params, base_optimizer, rho=0.05, adaptive=False, **kwargs):
         assert rho >= 0.0, f"Invalid rho, should be non-negative: {rho}"

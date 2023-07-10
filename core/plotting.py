@@ -11,12 +11,45 @@ def plot_activation_histograms(metric_extractor, dataset, file_path, num_images=
     """
     Plot activation histograms for a given number of images from a dataset.
 
-    Args:
-    metric_extractor: The MetricExtractor instance.
-    dataset: The dataset containing the images.
-    file_path: The path where the plot should be saved.
-    num_images: The number of images to plot (default is 5).
+    This function takes a MetricExtractor instance, a dataset, a file path, and an optional number of images to plot.
+    It then plots activation histograms for each layer of the model for each image, and saves the plot to a specified file.
+
+    **Parameters:**
+
+    - **metric_extractor** (*MetricExtractor instance*): The MetricExtractor instance. This should be properly initialized and should have a model attribute.
+
+    - **dataset** (*Dataset instance*): The dataset containing the images. This should have a file_paths attribute which is an iterable of image file paths.
+
+    - **file_path** (*str*): The path where the plot should be saved. This should be a valid directory where the user has write permissions.
+
+    - **num_images** (*int, optional*): The number of images to plot. Default is 5. This should be a positive integer.
+
+    **Raises:**
+
+    - **ValueError**: If any of the inputs are not as expected.
+
+    **Example usage:**
+
+    .. code-block:: python
+    
+        from data import OptionalSplitDataset
+        from core.metrics import MetricExtractor
+
+        # Initialize a MetricExtractor instance
+        metric_extractor = MetricExtractor(model, device)
+
+        # Initialize a dataset
+        dataset = ImageFolder('path_to_dataset')
+
+        # Specify the file path
+        file_path = 'path_to_save_plot'
+
+        # Call the function
+        plot_activation_histograms(metric_extractor, dataset, file_path, num_images=10)
+
     """
+    if not os.path.isdir(file_path):
+        raise ValueError("file_path must be a valid directory.")
     # Create a figure for the plot
     num_layers = len(metric_extractor.model.layers + metric_extractor.model.attention_layers)
     fig, axs = plt.subplots(num_images, num_layers+1, figsize=(5*num_layers, 5*num_images))
@@ -45,11 +78,45 @@ def plot_inNout(data, model, epoch, model_name):
     """
     Plot the original images and their reconstructions side by side.
 
-    Args:
-    data: The original images.
-    model: The model to use for reconstruction.
-    epoch: The current epoch (or, if during metrics extraction, the desired output path).
-    model_name: The name of the model (for saving path purposes)
+    This function takes a data loader, a model, an epoch or output path, and a model name. It then plots the original images and their reconstructions side by side, and saves the plot to a specified file.
+
+    **Parameters:**
+
+    - **data** (*DataLoader instance*): The DataLoader instance providing batches of images.
+
+    - **model** (*nn.Module instance*): The PyTorch model to use for reconstruction. This should be a model that can take a batch of images and return their reconstructions.
+
+    - **epoch** (*int or str*): The current epoch (for saving purposes), or if during metrics extraction, the desired output path.
+
+    - **model_name** (*str*): The name of the model. This is used for saving purposes.
+
+    **Raises:**
+
+    - **ValueError**: If any of the inputs are not as expected.
+
+    **Example usage:**
+
+    .. code-block:: python
+
+        from torch.utils.data import DataLoader
+        from torchvision.transforms import ToTensor
+        from core.model.model import Model
+        from core.data import OptionalSplitDataset
+
+        # Initialize a DataLoader instance
+        dataset = OptionalSplitDataset(root_dir='path_to_dataset', split='none', device='cuda')
+        data = DataLoader(dataset, batch_size=64)
+
+        # Initialize a model
+        model = Model(model_name='my_model', device='cuda')
+
+        # Specify the epoch and model name
+        epoch = 10
+        model_name = 'my_model'
+
+        # Call the function
+        plot_inNout(data, model, epoch, model_name)
+
     """
     # Select a batch of data
     images = next(iter(data))

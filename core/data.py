@@ -19,8 +19,25 @@ class OptionalSplitDataset(Dataset):
 
     **Args**:
         root_dir (str): The root directory containing the image files.
-        split (str): The dataset split ('train' or 'test').
+        split (str): The dataset split ('train': keep 80% or 'test' (keep the other 20%) or 'none' (keep 100%)).
         device (torch.device): The device to load the images onto.
+        
+    .. code-block:: python
+    
+        # Example 1: Creating a dataset for training images on the CPU
+        train_dataset = OptionalSplitDataset('/path/to/images', split='train', device=torch.device('cpu'))
+    
+        # Example 2: Creating a dataset for test images on the GPU
+        test_dataset = OptionalSplitDataset('/path/to/images', split='test', device=torch.device('cuda'))
+    
+        # Example 3: Accessing an image from the dataset
+        image = train_dataset[0]
+    
+        # Example 4: Getting the total number of images in the dataset
+        num_images = len(train_dataset)
+    
+        # Example 5: Creating a dataset without splitting the data
+        full_dataset = OptionalSplitDataset('/path/to/images', split='none', device=torch.device('cpu'))
     """
     def __init__(self, root_dir, split="train", device=None):
         """
