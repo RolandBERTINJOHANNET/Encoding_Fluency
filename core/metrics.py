@@ -89,6 +89,18 @@ class MetricExtractor:
         return activations
 
     def calculate_metrics(self, activations, layer):
+        """
+        Calculate and return a dictionary of metrics for a given layer's activations.
+    
+        The metrics calculated depend on whether the layer is an attention layer or not. For attention layers, the sum of absolute activations is calculated. For other layers, the L1 norm, Gini coefficient, and kurtosis of the activations are calculated.
+    
+        **Parameters**:
+            activations (torch.Tensor): The activations of the layer.
+            layer (str): The name of the layer.
+    
+        **Returns**:
+            dict: A dictionary of metrics for the layer.
+        """
         metrics = {}
         if layer in self.model.attention_layers:
             metrics["attention_"+layer] = torch.sum(torch.abs(activations)).cpu()
@@ -99,6 +111,15 @@ class MetricExtractor:
         return metrics
 
     def calculate_gini(self, activations):
+        """
+        Calculate the reconstruction error for the current image using a specified loss function.
+    
+        **Parameters**:
+            loss_name (str): The name of the loss function to use.
+    
+        **Returns**:
+            dict: A dictionary with the loss name as the key and the reconstruction error as the value.
+        """
         activations = activations - torch.min(activations)
         n = activations.shape[1]
         activations = torch.sort(activations.cpu(),dim=1)[0].to(self.model.device)
@@ -107,11 +128,31 @@ class MetricExtractor:
         return gini.cpu()
 
     def get_reco_error(self, loss_name):
+        """
+        Calculate the reconstruction error for the current image using a specified loss function.
+    
+        **Parameters**:
+            loss_name (str): The name of the loss function to use.
+    
+        **Returns**:
+            dict: A dictionary with the loss name as the key and the reconstruction error as the value.
+        """
         prediction, _, _ = self.model(self.image)
         loss = self.loss_functions[loss_name](prediction, self.image).flatten()
         return {loss_name: loss.detach().cpu()}
 
     def get_SAM_delta(self, loss_name):
+        """
+        Calculate the Sharpness-aware-Minimization -inspired delta for a specified loss function.
+    
+        This metric measures how much a small change in model parameters can collapse its ability to reconstruct an image'
+    
+        **Parameters**:
+            loss_name (str): The name of the loss function to use.
+    
+        **Returns**:
+            dict: A dictionary with the loss name as the key and the sam delta as the value.
+        """
         model_copy = copy.deepcopy(self.model)#keep copy to revert to former version at the end
         opt = training.SAM(self.model.parameters(), torch.optim.Adam)
         prediction, _, _ = self.model(self.image)

@@ -8,8 +8,7 @@ This module provides classes for building a neural network with optional sparsit
 Classes
 -------
 **NoConstraint**
-    A module that applies a ReLU activation function to its input. (The encoder is built from **ConvBlock**, **MeanStdFeatureMaps** and **Reparametrization** layers.
-                                                                    All of them have a **add_constraint** function that switches their **NoConstraint** to **SparsityConstraint**)
+    A module that applies a ReLU activation function to its input. (The encoder is built from **ConvBlock**, **MeanStdFeatureMaps** and **Reparametrization** layers. All of them have a **add_constraint** function that switches their **NoConstraint** to **SparsityConstraint**)
 
 **SparsityConstraint**
     A module that applies a sigmoid activation function to its input, then computes the KL divergence between the mean activation and a constant distribution. This is used to encourage sparsity in the activations.
@@ -27,7 +26,7 @@ Classes
     A module which generates a set of featuremaps for means and one for stds. It must be followed by a Reparametrization module.
 
 **Reparametrization**
-    A module which performs re-parametrization (sampling from a gaussian, then *sig+mu). The module right before must be a MeanStdFeatureMaps() module.
+    A module which performs re-parametrization (sampling from a gaussian, then x sig + mu). The module right before must be a MeanStdFeatureMaps() module.
 """
 import torch
 import torch.nn as nn
@@ -347,7 +346,7 @@ class MeanStdFeatureMaps(nn.Module):
 
 class Reparametrization(nn.Module):
     """
-    A PyTorch module which performs re-parametrization (sampling from a Gaussian, then *sig+mu). 
+    A PyTorch module which performs re-parametrization (sampling from a Gaussian, then x sig + mu). 
     The module right before must be a MeanStdFeatureMaps() module.
 
     Attributes

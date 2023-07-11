@@ -2,28 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-#---------------------sparsity constraint without a sigmoid
-class CBAM_SparsityConstraint(nn.Module):
-    def __init__(self,constraint_param,scaling_param):
-      super().__init__()
-      self.constraint_param = constraint_param
-      self.scaling_param = scaling_param
-
-    def forward(self,x):
-        #compute kl div to uniform distribution
-        means = x.mean(dim=0)
-        kl = (
-            self.constraint_param*torch.log(
-                (torch.ones_like(means)*self.constraint_param)/means)
-        +(1-self.constraint_param)*torch.log(
-                (torch.ones_like(means)*(1-self.constraint_param))/(torch.ones_like(means)-means)
-                )
-            ).mean()
-        
-        return x,kl*self.scaling_param
-
-
 class BasicConv(nn.Module):
+    """
+    This class is a basic convolutional layer, taken from `git <https://github.com/Jongchan/attention-module/tree/master>`_.. It includes options for batch normalization and ReLU activation.
+    """
     def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
         super(BasicConv, self).__init__()
         self.out_channels = out_planes
@@ -40,10 +22,16 @@ class BasicConv(nn.Module):
         return x
 
 class Flatten(nn.Module):
+    """
+    This class is a simple layer that flattens its input, taken from `git <https://github.com/Jongchan/attention-module/tree/master>`_..
+    """
     def forward(self, x):
         return x.view(x.size(0), -1)
 
 class ChannelGate(nn.Module):
+    """
+    This class implements a channel gate, taken from `git <https://github.com/Jongchan/attention-module/tree/master>`_.. It includes options for different types of pooling.
+    """
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
         super(ChannelGate, self).__init__()
         self.gate_channels = gate_channels
@@ -107,26 +95,88 @@ class ChannelGate(nn.Module):
             return channel_att_sum
 
 def logsumexp_2d(tensor):
+    """
+    This function calculates the log-sum-exp of a 2D tensor, taken from `git <https://github.com/Jongchan/attention-module/tree/master>`_.
+    """
     tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
     s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
     outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
     return outputs
 
 class ChannelPool(nn.Module):
+    """
+    This class implements a channel pooling layer, taken from `git <https://github.com/Jongchan/attention-module/tree/master>`_.. It returns the concatenation of the max and mean of its input.
+    """
     def forward(self, x):
         return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
 
 #the main module --
 class Constrained_CBAM(nn.Module):
+    """
+    This class implements a modified version of the Convolutional Block Attention Module (CBAM) with a L1 constraint. 
+    It only includes depth-wise attention, also known as channel attention.
+
+    **Attributes**:
+        gate_channels (int): The number of output channels in the attention module.
+        constraint_param (float): The parameter for the L1 constraint.
+        scaling_param (float): The scaling parameter for the attention module.
+        index (int): The index of the attention module in the model.
+        reduction_ratio (int, optional): The ratio for the channel reduction in the attention module. Default is 16.
+        pool_types (list of str, optional): The types of pooling to use in the attention module. Default is ['avg', 'max'].
+        no_spatial (bool, optional): Whether to exclude spatial attention. Default is False.
+
+    **Example usage**:
+
+    .. code-block:: python
+
+        from model import Constrained_CBAM
+
+        # Initialize the Constrained_CBAM module
+        cbam = Constrained_CBAM(gate_channels=64, constraint_param=0.1, scaling_param=0.5, index=1)
+
+        # Use the Constrained_CBAM module on an input
+        output, l1 = cbam(input)
+
+    """
     def __init__(self, gate_channels, constraint_param, scaling_param, index, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
+        """
+        Initialize the Constrained_CBAM module.
+
+        **Parameters**:
+            gate_channels (int): The number of output channels in the attention module.
+            constraint_param (float): The parameter for the L1 constraint.
+            scaling_param (float): The scaling parameter for the attention module.
+            index (int): The index of the attention module in the model.
+            reduction_ratio (int, optional): The ratio for the channel reduction in the attention module. Default is 16.
+            pool_types (list of str, optional): The types of pooling to use in the attention module. Default is ['avg', 'max'].
+            no_spatial (bool, optional): Whether to exclude spatial attention. Default is False.
+        """
         super().__init__()
         self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
         self.name = "attention"+str(index)+"_Sigmoid"
         
     def forward(self, x):
+        """
+        Forward pass of the Constrained_CBAM module.
+
+        **Parameters**:
+            x (torch.Tensor): The input tensor.
+
+        **Returns**:
+            tuple: The output tensor and the L1 norm.
+        """
         l1=0.
         x_out,l1 = self.ChannelGate(x)
         return x_out,l1
     
     def get_activations(self,x):
+        """
+        Get the activation map of the Constrained_CBAM module.
+
+        **Parameters**:
+            x (torch.Tensor): The input tensor.
+
+        **Returns**:
+            torch.Tensor: The activation map.
+        """
         return self.ChannelGate.get_att_map(x)

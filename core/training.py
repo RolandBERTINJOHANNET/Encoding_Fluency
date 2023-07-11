@@ -97,6 +97,9 @@ def train_the_model(model, dataset, loss, opt, nb_epochs):
 #this is taken straight from https://github.com/davda54/sam
 #in this project we only use this to perform the first_step when extracting the sharpness metric
 class SAM(torch.optim.Optimizer):
+    """
+    This class implements the Sharpness-aware-Minimization optimizer, taken from `git <https://github.com/davda54/sam>`_.
+    """
     def __init__(self, params, base_optimizer, rho=0.05, adaptive=False, **kwargs):
         assert rho >= 0.0, f"Invalid rho, should be non-negative: {rho}"
 
