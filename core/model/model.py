@@ -1,131 +1,161 @@
+"""
+This module defines a **Variational Autoencoder (VAE)** model with a unique architecture designed for image data. 
+The model allows for the imposition of a *sparsity constraint* on certain layers, which can be useful for learning 
+more compact or interpretable representations. The model is composed of an encoder, which uses a VGG19 architecture 
+and includes a pixel shuffling operation, and a decoder, which gradually upscales the feature maps back to the 
+original image size. The model also includes a method for accessing the activations of any layer.
+
+.. code-block:: python
+
+    Example usage:
+        model = Model('model_name', 'cuda', [1, 2, 3], [1, 2], 1., 0.001)
+        x = torch.randn(1, 3, 224, 224)
+        output, kl, att = model(x)
+
+"""
+
 import torch.nn as nn
 import torch
-import sys
-import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from core.model import basic_modules
 
-#pixelshuffle module :
 class PixelShuffler(nn.Module):
-    def __init__(self,upscale_factor):
-      super().__init__()
-      self.upscale_factor = upscale_factor
+    """
+    A module that performs **pixel shuffling**, which is a way of upscaling the feature maps without 
+    introducing any new parameters. The upscale factor determines the factor by which the spatial 
+    dimensions are increased.
 
-    def forward(self,x):
+    :param upscale_factor: The factor by which to upscale the feature maps.
+    :type upscale_factor: int
+    """
+    def __init__(self, upscale_factor):
+        super().__init__()
+        self.upscale_factor = upscale_factor
+
+    def forward(self, x):
         return nn.functional.pixel_shuffle(x, self.upscale_factor)
 
-
-#--------------------------------------------THE VAE
-
 class Model(nn.Module):
-  #this init function is hard to read, but basically it constructs the VAE with a sparsity constraint on the 
-  #layer_sparsity_cstraint-th layers (it being a list)
-  def __init__(self,model_name,device,layer_sparsity_cstraint=[],attention=[],sparsity_coeff=1.,sparsity_param=0.001):
-    super().__init__()
-    self.latent_dim = 512
-    self.name = model_name
-    self.device=torch.device(str(device))
-    
-    #some of the constraint indices need to be passed to the vgg_features module, some to the ones after
-    vgg_cstraints = [index for index in layer_sparsity_cstraint if index<16]#there's 16 convs in vgg19
-    other_cstraints = [index-15 for index in layer_sparsity_cstraint if index>=16]#after vgg, first index is 1
-    
-    #---------------------encoder
-    modules = []
-    in_channels = self.latent_dim
+    """
+    A **Variational Autoencoder (VAE)** model with a unique architecture designed for image data. The model allows 
+    for the imposition of a *sparsity constraint* on certain layers.
 
-    modules.append(basic_modules.VGG19_Features(vgg_cstraints,attention, sparsity_param, sparsity_coeff))
-    modules.append(basic_modules.MeanStdFeatureMaps(in_channels,self.latent_dim))
-    modules.append(basic_modules.Reparametrization(self.device))
-    self.encoder = nn.Sequential(*modules)
-    
-    #now add the constraints
-    for layer_idx in other_cstraints:
-        if layer_idx>2:
-            raise ValueError("you provided an out-of-bounds index for the sparsity constraint location !")
-        self.encoder[layer_idx].add_constraint(sparsity_param,sparsity_coeff)
+    :param model_name: The name of the model.
+    :type model_name: str
+    :param device: The device to run the model on ('cpu' or 'cuda').
+    :type device: str
+    :param layer_sparsity_cstraint: A list of indices of layers to apply the sparsity constraint to.
+    :type layer_sparsity_cstraint: list, optional
+    :param attention: A list of attention values.
+    :type attention: list, optional
+    :param sparsity_coeff: The coefficient for the sparsity constraint.
+    :type sparsity_coeff: float, optional
+    :param sparsity_param: The parameter for the sparsity constraint.
+    :type sparsity_param: float, optional
+    """
+    def __init__(self, model_name, device, layer_sparsity_cstraint=[], attention=[], sparsity_coeff=1., sparsity_param=0.001):
+        super().__init__()
+        self.latent_dim = 512
+        self.name = model_name
+        self.device = torch.device(str(device))
+        self.encoder = self.build_encoder(layer_sparsity_cstraint, attention, sparsity_param, sparsity_coeff)
+        self.decoder = self.build_decoder()
+        self.layers = self.encoder[0].layers
+        self.attention_layers = self.encoder[0].attention_layers
+        self.all_layers = self.layers + [self.encoder[1].name + ("_mu"), self.encoder[1].name + ("_std"), self.encoder[2].name]
 
-    #-------------decoder
-    #we want a 2-fold upscale factor and a 2-fold depth-decrease factor,
-    #thus the number of channels must increase 2-fold each time
-    upscale_factor = 2
-    in_channels=self.latent_dim
-    modules = []
-    nb_filters = [self.latent_dim,512, 256, 128, 64]#this is stupidly just used for its length
-    out_chan=None#the first iteration sets its value
-    for i in range(len(nb_filters)*2):
-        if i%2==0:#only downsample once out of two layers
-            out_chan = int(in_channels * upscale_factor)#reduced by 2 each iteration
-            modules.append(
-                nn.Sequential(
-                    nn.Conv2d(in_channels,out_chan,3,1,padding=1),
-                    nn.BatchNorm2d(out_chan),
-                    PixelShuffler(upscale_factor=upscale_factor),
-                    nn.LeakyReLU()
-                    )
-                )
-            in_channels=int(out_chan/(upscale_factor**2))#the pixelshuffler divides by the square of the number of chans
-        else:
-            modules.append(
-                basic_modules.ResBlock(in_channels)
-                )
-    
-    #add a final layer with a sigmoid,no pixelshuffler and no batch norm
-    out_chan = int(in_channels * upscale_factor)#reduced by 2 each iteration
-    modules.append(
-            nn.Sequential(
-                nn.Conv2d(in_channels, 3, 3,1,1,padding_mode="reflect"),
-                nn.Sigmoid())
-            )
-    self.decoder = nn.Sequential(*modules)
+    def build_encoder(self, layer_sparsity_cstraint, attention, sparsity_param, sparsity_coeff):
+        modules = []
+        modules.append(basic_modules.VGG19_Features(layer_sparsity_cstraint, attention, sparsity_param, sparsity_coeff))
+        modules.append(basic_modules.MeanStdFeatureMaps(self.latent_dim, self.latent_dim))
+        modules.append(basic_modules.Reparametrization(self.device))
+        encoder = nn.Sequential(*modules)
+        for layer_idx in [index-15 for index in layer_sparsity_cstraint if index>=16]:
+            if layer_idx>2:
+                raise ValueError("you provided an out-of-bounds index for the sparsity constraint location !")
+            encoder[layer_idx].add_constraint(sparsity_param,sparsity_coeff)
+        return encoder
 
-    #get layer names for name-driven activation access by looping over layer names
-    self.layers = self.encoder[0].layers
-    self.attention_layers = self.encoder[0].attention_layers
-    self.layers+=[self.encoder[1].name+("_mu"),self.encoder[1].name+("_std"),self.encoder[2].name]
-    self.all_layers = self.encoder[0].all_layers + [self.encoder[1].name+("_mu"),self.encoder[1].name+("_std"),self.encoder[2].name]
-    
-#----------------------------------------------------------------------------forward
-  def forward(self,x):
-    #there's just 3 encoder groups
-    x,kl,att = self.encoder[0](x)#convs
-    x,kl_temp = self.encoder[1](x)#mean-std
-    kl+=kl_temp
-    x,kl_temp = self.encoder[2](x)#reparametrization
-    kl+=kl_temp
-    #loop over decoder layers
-    for module in self.decoder:
-        x = module(x)
-    return x,kl,att
-    
-#----------------------------------------------------------------------------misc
-  def get_activations(self,x,layer_name):
-      #feature extractor has 16 layers so it is treated separately
-      activations_convs = self.encoder[0].get_activations(x,layer_name)
-      if activations_convs is not None:
-        return activations_convs
-      else:#if the layer isn't one of the convs, just feedforward
+    def build_decoder(self):
+        modules = []
+        upscale_factor = 2
+        in_channels = self.latent_dim
+        nb_filters = [self.latent_dim, 512, 256, 128, 64]
+        for i in range(len(nb_filters) * 2):
+            if i % 2 == 0:
+                out_chan = int(in_channels * upscale_factor)
+                modules.append(nn.Sequential(nn.Conv2d(in_channels, out_chan, 3, 1, padding=1), nn.BatchNorm2d(out_chan), PixelShuffler(upscale_factor=upscale_factor), nn.LeakyReLU()))
+                in_channels = int(out_chan / (upscale_factor ** 2))
+            else:
+                modules.append(basic_modules.ResBlock(in_channels))
+        out_chan = int(in_channels * upscale_factor)
+        modules.append(nn.Sequential(nn.Conv2d(in_channels, 3, 3, 1, 1, padding_mode="reflect"), nn.Sigmoid()))
+        return nn.Sequential(*modules)
+
+    def forward(self, x):
+        """
+        Passes the input through the model.
+
+        :param x: The input tensor.
+        :type x: torch.Tensor
+        :returns: A tuple containing the output tensor, the KL divergence, and the attention values.
+        :rtype: tuple
+        """
+        kl_terms = []
+        x, kl, att = self.encoder[0](x)
+        kl_terms.append(kl)
+        x, kl = self.encoder[1](x)
+        kl_terms.append(kl)
+        x, kl = self.encoder[2](x)
+        kl_terms.append(kl)
+        kl = sum(kl_terms)
+        for module in self.decoder:
+            x = module(x)
+        return x, kl, att
+
+    def get_activations(self, x, layer_name):
+        """
+        Returns the activations of a specific layer.
+
+        :param x: The input tensor.
+        :type x: torch.Tensor
+        :param layer_name: The name of the layer.
+        :type layer_name: str
+        :returns: The activations of the layer.
+        :rtype: torch.Tensor
+        """
+        activations = self.encoder[0].get_activations(x, layer_name)
+        if activations is not None:
+            return activations
         x = self.encoder[0](x)[0]
-      #try meanstdfeaturemaps
-      if "MeanStdFeatureMaps" in layer_name:
-          return self.encoder[1].get_activations(x,"mu" if "mu" in layer_name else "sigma")
-      else:
-          x = self.encoder[1](x)[0]
-      #try reparametrization
-      if "Reparametrization" in layer_name:
-          return self.encoder[2].get_activations(x)
-          
- 
-      raise ValueError("\n!!!!\n!!!!!!\n      name given to model.get_activations ("+str(layer_name)+") doesn't exist !\n")
-      return None
-  
-  def encode(self,x,sample=False):
-    for layer in self.encoder[:-1]:
-        x,_ = layer(x)
-    if sample:#go through the reparametrization if the user wants it
-        return self.encoder[-1](x)[0]
-    else:
-        return x[:,:int(x.shape[1]/2)]#return just the means
+        if "MeanStdFeatureMaps" in layer_name:
+            return self.encoder[1].get_activations(x, "mu" if "mu" in layer_name else "sigma")
+        x = self.encoder[1](x)[0]
+        if "Reparametrization" in layer_name:
+            return self.encoder[2].get_activations(x)
+        raise ValueError(f"Invalid layer name: {layer_name}")
 
-  def decode(self,x):
-    return self.decoder(x)
+    def encode(self, x, sample=False):
+        """
+        Encodes the input into the latent space.
+
+        :param x: The input tensor.
+        :type x: torch.Tensor
+        :param sample: Whether to sample from the latent space.
+        :type sample: bool, optional
+        :returns: The encoded tensor.
+        :rtype: torch.Tensor
+        """
+        for layer in self.encoder[:-1]:
+            x, _ = layer(x)
+        return self.encoder[-1](x)[0] if sample else x[:, :int(x.shape[1] / 2)]
+
+    def decode(self, x):
+        """
+        Decodes the input from the latent space.
+
+        :param x: The input tensor.
+        :type x: torch.Tensor
+        :returns: The decoded tensor.
+        :rtype: torch.Tensor
+        """
+        return self.decoder(x)

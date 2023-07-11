@@ -242,14 +242,20 @@ class VGG19_Features(nn.Module):
         return convs
 
     def add_attention_layers(self, attention, constraint_param, scaling_param):
+        if True in [att>15 or att<=0 for att in attention]:
+          raise ValueError("You provided attention indices that are either too high or too low !")
         nb_filters = [64,64,128,128,256,256,256,256,512,512,512,512,512,512,512,512]
         attention.sort()
         attention.reverse()
-        for att in attention:
-            if att > 15 or att <= 0:
-                raise ValueError("You provided attention indices that are either too high or too low !")
-            self.feature_extractor.insert(att, Constrained_CBAM(nb_filters[att-1],constraint_param, scaling_param, att))
-
+        ctr=0#counting convolutions, adding attention whenever needed
+        idx=0#iterating through the feature extractor, adding 1 to idx whenever we add a constraint
+        while idx<len(self.feature_extractor):
+            if isinstance(self.feature_extractor[idx],ConvBlock):
+                if ctr in attention:
+                    self.feature_extractor.insert(idx,Constrained_CBAM(nb_filters[ctr-1],constraint_param, scaling_param, ctr))
+                    idx+=1
+                ctr+=1
+            idx+=1
 
     def forward(self,x):
         kl=0.
