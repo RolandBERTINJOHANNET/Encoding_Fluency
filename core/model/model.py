@@ -16,7 +16,7 @@ original image size. The model also includes a method for accessing the activati
 
 import torch.nn as nn
 import torch
-from core.model import basic_modules
+import basic_modules
 
 class PixelShuffler(nn.Module):
     """

@@ -106,8 +106,11 @@ class MetricExtractor:
             metrics["attention_"+layer] = torch.sum(torch.abs(activations)).cpu()
         else:
             metrics["L1_"+layer] = torch.sum(torch.abs(activations)).cpu()
+            metrics["Mean_"+layer] = torch.mean(activations).cpu()
+            metrics["Std_"+layer] = torch.std(activations).cpu()
             metrics["Gini_"+layer] = self.calculate_gini(activations)
             metrics["kurtosis_"+layer] = (((activations - activations.mean())**4).mean() / (activations.std()**4)).cpu()
+            #ajouter mean et std
         return metrics
 
     def calculate_gini(self, activations):
