@@ -1,0 +1,8 @@
+lpips.egg==info
+matplotlib==3.6.2
+pandas==2.0.2
+Pillow==10.0.0
+torch==1.13.1
+torchmetrics==1.0.0
+torchvision==0.14.1
+tqdm==4.64.1
