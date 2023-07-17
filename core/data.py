@@ -99,7 +99,7 @@ class OptionalSplitDataset(Dataset):
         **Returns**:
             int: The total number of images.
         """
-        return len(self.file_paths)
+        return 100#len(self.file_paths)
     
     @staticmethod
     def process_image(image_path, device):
@@ -118,6 +118,16 @@ class OptionalSplitDataset(Dataset):
         """
         # Read the image using torchvision's read_image function
         image = read_image(image_path).float() / 255.0  # Normalize to [0, 1]
+
+        print(image.shape)
+
+        # Check the number of channels in the image
+        if image.shape[0] > 3:
+            warnings.warn("Image has more than 3 channels! Only the first 3 (RGB) channels will be used.")
+            image = image[:3, :, :]  # Keep only the first 3 channels
+        elif image.shape[0] < 3:
+            raise ValueError("Image has less than 3 channels! Please provide an RGB image.")
+
         # Check if the image is not 224x224 and issue a warning
         if image.shape[1] != 224 or image.shape[2] != 224:
             warnings.warn("Images in the input are not 224*224! Images are being"
