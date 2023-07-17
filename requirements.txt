@@ -1,4 +1,4 @@
-lpips.egg==info
+lpips.egg
 matplotlib==3.6.2
 pandas==2.0.2
 Pillow==10.0.0
