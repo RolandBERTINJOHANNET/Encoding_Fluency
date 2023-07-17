@@ -1,12 +1,23 @@
 import torch
 import os
+import functools
 import warnings
+#change warnings format
+def custom_formatwarning(msg, *args, **kwargs):
+    # ignore everything except the message
+    return "\n!!!!!\n"+str(msg) + '\n\n'
+warnings.formatwarning = custom_formatwarning
+warnings.warn = functools.partial(warnings.warn, stacklevel=2)
+
 from torchvision.io import read_image
 from torchvision.transforms import Resize
 from torch.utils.data import Dataset
 from PIL import Image
 
 class OptionalSplitDataset(Dataset):
+
+    warned_size = False
+    warned_channels = False
     """
     A custom **PyTorch Dataset** for loading image data.
 
@@ -15,7 +26,6 @@ class OptionalSplitDataset(Dataset):
     **Attributes**:
         device (torch.device): The device to load the images onto.
         file_paths (list): A list of paths to the image files.
-        warned (bool): A flag used to issue a warning if the images are not 224x224.
 
     **Args**:
         root_dir (str): The root directory containing the image files.
@@ -53,7 +63,6 @@ class OptionalSplitDataset(Dataset):
         """
         self.device = device
         self.file_paths = self.get_all_image_paths(root_dir)
-        self.warned = False
         
         if self.device is not torch.device("cpu") and not torch.cuda.is_available():
             warnings.warn("The specified device is not available. Defaulting to CPU.")
@@ -99,7 +108,7 @@ class OptionalSplitDataset(Dataset):
         **Returns**:
             int: The total number of images.
         """
-        return 100#len(self.file_paths)
+        return len(self.file_paths)
     
     @staticmethod
     def process_image(image_path, device):
@@ -119,21 +128,23 @@ class OptionalSplitDataset(Dataset):
         # Read the image using torchvision's read_image function
         image = read_image(image_path).float() / 255.0  # Normalize to [0, 1]
 
-        print(image.shape)
-
         # Check the number of channels in the image
         if image.shape[0] > 3:
-            warnings.warn("Image has more than 3 channels! Only the first 3 (RGB) channels will be used.")
+            if not OptionalSplitDataset.warned_channels:
+                warnings.warn("Image has more than 3 channels! Only the first 3 (RGB) channels will be used.", RuntimeWarning)
+                OptionalSplitDataset.warned_channels = True
             image = image[:3, :, :]  # Keep only the first 3 channels
+
         elif image.shape[0] < 3:
             raise ValueError("Image has less than 3 channels! Please provide an RGB image.")
 
         # Check if the image is not 224x224 and issue a warning
         if image.shape[1] != 224 or image.shape[2] != 224:
-            warnings.warn("Images in the input are not 224*224! Images are being"
-                          " resized to 224x224 on the fly, which might make training somewhat slower")
-        
-        image = Resize((224, 224))(image)# Resize the image to 224x224
+            if not OptionalSplitDataset.warned_size:
+                warnings.warn("Images in the input are not 224*224! Images are being"
+                              " resized to 224x224 on the fly, which might make training somewhat slower", RuntimeWarning)
+                OptionalSplitDataset.warned_size = True
+            image = Resize((224, 224))(image)# Resize the image to 224x224
         
         # move the image to the specified device
         image = image.to(device)

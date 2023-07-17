@@ -62,7 +62,6 @@ class MetricExtractor:
             dict: A dictionary of metrics.
         """
         self.image = data.OptionalSplitDataset.process_image(image_path, self.model.device)[None,:]
-        print(self.image.shape)
         metrics = {}
         for layer in self.model.layers + self.model.attention_layers:
             with torch.no_grad():
