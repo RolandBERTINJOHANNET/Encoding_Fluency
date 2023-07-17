@@ -92,7 +92,7 @@ class ChannelGate(nn.Module):
                     channel_att_sum = channel_att_raw
                 else:
                     channel_att_sum = channel_att_sum + channel_att_raw
-            return channel_att_sum
+            return torch.sigmoid(channel_att_sum)
 
 def logsumexp_2d(tensor):
     """

@@ -103,13 +103,13 @@ class MetricExtractor:
         """
         metrics = {}
         if layer in self.model.attention_layers:
-            metrics["attention_"+layer] = torch.sum(torch.abs(activations)).cpu()
+            metrics["Attention_"+layer] = torch.sum(torch.abs(activations)).cpu()
         else:
             metrics["L1_"+layer] = torch.sum(torch.abs(activations)).cpu()
             metrics["Mean_"+layer] = torch.mean(activations).cpu()
             metrics["Std_"+layer] = torch.std(activations).cpu()
             metrics["Gini_"+layer] = self.calculate_gini(activations)
-            metrics["kurtosis_"+layer] = (((activations - activations.mean())**4).mean() / (activations.std()**4)).cpu()
+            metrics["Kurtosis_"+layer] = (((activations - activations.mean())**4).mean() / (activations.std()**4)).cpu()
             #ajouter mean et std
         return metrics
 
@@ -142,7 +142,7 @@ class MetricExtractor:
         """
         prediction, _, _ = self.model(self.image)
         loss = self.loss_functions[loss_name](prediction, self.image).flatten()
-        return {loss_name: loss.detach().cpu()}
+        return {f"Reco_{loss_name}": loss.detach().cpu()}
 
     def get_SAM_delta(self, loss_name):
         """

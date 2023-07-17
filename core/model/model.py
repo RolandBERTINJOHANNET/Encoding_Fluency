@@ -61,7 +61,7 @@ class Model(nn.Module):
         self.device = torch.device(str(device))
         self.encoder = self.build_encoder(layer_sparsity_cstraint, attention, sparsity_param, sparsity_coeff)
         self.decoder = self.build_decoder()
-        self.layers = self.encoder[0].layers
+        self.layers = self.encoder[0].all_layers
         self.attention_layers = self.encoder[0].attention_layers
         self.all_layers = self.layers + [self.encoder[1].name + ("_mu"), self.encoder[1].name + ("_std"), self.encoder[2].name]
 

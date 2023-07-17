@@ -34,19 +34,32 @@ dataloader = DataLoader(dataset, batch_size=10)
 
 # Process each image in the dataset
 all_metrics = {}
+i=0
 for image_path in tqdm(dataset.file_paths, total=len(dataset.file_paths), desc="extracting metrics",unit="image"):
     image_metrics = metric_extractor(image_path)
     all_metrics[image_path] = image_metrics
+    if i>=5:
+        break
 
 # Convert the dictionary to a pandas DataFrame
 df = pd.DataFrame.from_dict(all_metrics, orient='index').apply(lambda x : x.apply(lambda x : float(x)))
 
-file_path = input("Enter an output folder : ")# Ask for output location
+dir_path = input("Enter an output directory: ")# Ask for output directory
+os.makedirs(dir_path,exist_ok=True)
 
-os.makedirs(file_path,exist_ok=True)
-df.to_csv(f"{file_path}/metrics.csv")# Save csv to file
-plotting.plot_inNout(dataloader, model, file_path, model_name)# Plot in-and-out images
+plotting.plot_inNout(dataloader, model, dir_path, model_name)# Plot in-and-out images
 
 #--------------now make a histograms plot
 # Call the function to plot activation histograms
-plotting.plot_activation_histograms(metric_extractor, dataset, file_path)
+plotting.plot_activation_histograms(metric_extractor, dataset, dir_path)
+
+# the remainder of the code splits the metrics by type (L1, reconstruction...) and saves them separately
+metric_types = ["Kurtosis", "L1", "Gini", "Mean", "Std", "Attention", "SAM", "Reco"]
+
+# Loop over metric types
+for metric_type in metric_types:
+    df_metric = df.filter(like=metric_type)# Filter columns related to the current metric type
+    
+    file_path = f"{dir_path}/{model_name}_{metric_type}.csv"# Define the output filename
+    
+    df_metric.to_csv(file_path)# write the metrics file
