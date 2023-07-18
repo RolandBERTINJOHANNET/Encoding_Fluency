@@ -7,7 +7,12 @@ def custom_formatwarning(msg, *args, **kwargs):
     # ignore everything except the message
     return "\n!!!!!\n"+str(msg) + '\n\n'
 warnings.formatwarning = custom_formatwarning
-warnings.warn = functools.partial(warnings.warn, stacklevel=2)
+# Store the original warnings.warn function
+original_warn = warnings.warn
+
+def custom_warn(message, category=None, stacklevel=1, source=None):
+    return original_warn(message, category, stacklevel=2, source=source)
+warnings.warn = custom_warn
 
 from torchvision.io import read_image
 from torchvision.transforms import Resize

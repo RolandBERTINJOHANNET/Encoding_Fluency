@@ -64,7 +64,7 @@ plt.title('Attention map L1 norm')
 plt.savefig(f'{model_name}/plots/attention_{model_name}.png')
 
 # Create a log file with some info
-date_time = datetime.datetime.now().strftime("%Y_%B_%d_%H:%M:%S")
+date_time = datetime.datetime.now().strftime("%Y_%B_%d_%H-%M-%S")
 with open(f'{model_name}/{date_time}.log', 'w') as f:
     f.write(f'Saved model parameters to: {model_name}/parameters/{model_name}.json\n')
     f.write(f'Saved model weights to: {model_name}/weights/{model_name}.pth\n')
