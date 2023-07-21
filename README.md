@@ -1,6 +1,8 @@
 # Encoding_Fluency 
 user guide (shot on a mighty slow computer): [here](https://player.vimeo.com/video/846560884) 
 
+Internship report (french and auto-translated english version) [here](https://github.com/RolandBERTINJOHANNET/Encoding_Fluency/tree/main/extra) 
+
 
 Encoding_Fluency is a package that provides a comprehensive suite of tools for training deep learning models, specifically Variational Autoencoders (VAEs), and extracting metrics from them. The package is designed with a focus on Fluence, a measure of the ease of information processing in the brain.
 
